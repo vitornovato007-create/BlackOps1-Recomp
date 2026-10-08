@@ -5,92 +5,142 @@ on:
 
 jobs:
   codegen:
-    name: ReXGlue 0.10.0 codegen probe
+    name: ReXGlue 0.10.0 - Black Ops 1 Codegen
     runs-on: ubuntu-24.04
 
     steps:
-      - name: Checkout
+      - name: Checkout project
         uses: actions/checkout@v4
 
-      - name: Check game input
+      - name: Check Black Ops 1 XEX
         shell: bash
         run: |
           set -e
           if [ ! -f "game/default.xex" ]; then
-            echo "::error::game/default.xex is missing."
-            echo "For copyright reasons the repository does not contain the game."
-            echo "Add your own legally obtained XEX through your private build setup."
+            echo "::error::game/default.xex was not found."
+            echo "Place your legally obtained default.xex at game/default.xex"
             exit 1
           fi
+          echo "Black Ops 1 XEX found."
+          ls -lh game/default.xex
+          file game/default.xex
 
       - name: Install build dependencies
+        shell: bash
         run: |
+          set -e
           sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            cmake \
-            ninja-build \
-            git \
-            python3 \
-            python3-pip
+          sudo apt-get install -y build-essential clang lld cmake ninja-build git python3 python3-pip pkg-config libvulkan-dev
+          echo "Compiler:"
+          clang++ --version
+          echo "CMake:"
+          cmake --version
 
-      - name: Fetch ReXGlue 0.10.0
+      - name: Clone ReXGlue 0.10.0
         shell: bash
         run: |
           set -e
-          git clone --depth 1 --branch v0.10.0 \
-            https://github.com/rexglue/rexglue-sdk.git \
-            rexglue-sdk
-
-      - name: Show ReXGlue revision
-        working-directory: rexglue-sdk
-        run: |
+          git clone --depth 1 --branch v0.10.0 https://github.com/rexglue/rexglue-sdk.git rexglue-sdk
+          cd rexglue-sdk
+          echo "ReXGlue commit:"
           git rev-parse HEAD
-          git status --short
+          echo "ReXGlue tag:"
+          git describe --tags --always
 
-      - name: Locate ReXGlue CLI
+      - name: Configure ReXGlue
+        working-directory: rexglue-sdk
         shell: bash
         run: |
           set -e
-          echo "Repository contents:"
-          find rexglue-sdk -maxdepth 3 -type f \
-            \( -name '*rexglue*' -o -name '*.py' -o -name 'CMakeLists.txt' \) \
-            | sort | head -200
+          cmake --preset linux-amd64-release -DREXGLUE_ENABLE_TRACY=OFF -DREXGLUE_ENABLE_PERF_COUNTERS=OFF
 
-      - name: Run project preparation
-        shell: bash
-        run: |
-          chmod +x setup.sh
-          ./setup.sh
-
-      - name: Codegen
+      - name: Build ReXGlue
+        working-directory: rexglue-sdk
         shell: bash
         run: |
           set -e
-          echo "=== ReXGlue 0.10.0 codegen probe ==="
-          echo "The exact CLI entry point can change between SDK layouts."
-          echo "This step intentionally stops with a diagnostic until"
-          echo "the installed SDK exposes the expected CLI command."
-          echo
-          echo "Manifest:"
+          cmake --build --preset linux-amd64-release --target rexglue --parallel 2
+
+      - name: Locate ReXGlue executable
+        shell: bash
+        run: |
+          set -e
+          echo "Searching for rexglue executable..."
+          find rexglue-sdk -type f -name "rexglue" -perm -111 -print
+          REXGLUE_BIN="$(find rexglue-sdk -type f -name "rexglue" -perm -111 | head -n 1)"
+          if [ -z "$REXGLUE_BIN" ]; then
+            echo "::error::ReXGlue executable was not found."
+            exit 1
+          fi
+          echo "REXGLUE_BIN=$REXGLUE_BIN" >> "$GITHUB_ENV"
+          echo "Using:"
+          echo "$REXGLUE_BIN"
+
+      - name: Test ReXGlue
+        shell: bash
+        run: |
+          set -e
+          echo "Testing ReXGlue..."
+          "$REXGLUE_BIN" --help
+
+      - name: Prepare generated directory
+        shell: bash
+        run: |
+          set -e
+          mkdir -p generated
+          ls -la generated
+
+      - name: ReXGlue Codegen
+        shell: bash
+        run: |
+          set -o pipefail
+          echo "=============================================="
+          echo " BlackOps1-Recomp v0.1"
+          echo " ReXGlue 0.10.0 Code Generation"
+          echo "=============================================="
+          echo ""
+          echo "Project:"
           cat blackops1_manifest.toml
-          echo
-          echo "XEX:"
+          echo ""
+          echo "XEX information:"
           file game/default.xex
           ls -lh game/default.xex
-          echo
-          echo "SDK candidates:"
-          find rexglue-sdk -type f -perm -111 | sort | head -100
-          echo
-          echo "NEXT STEP: wire the discovered v0.10.0 CLI entry point here."
-          exit 2
+          echo ""
+          echo "Starting ReXGlue..."
+          "$REXGLUE_BIN" codegen blackops1_manifest.toml --log_level info --log_file blackops1_codegen.log
 
-      - name: Upload generated output
+      - name: Show generated files
+        if: always()
+        shell: bash
+        run: |
+          echo "=============================================="
+          echo " Generated files"
+          echo "=============================================="
+          if [ -d "generated" ]; then
+            find generated -maxdepth 2 -type f -printf '%p\t%k KB\n' | sort
+          else
+            echo "generated/ does not exist."
+          fi
+
+      - name: Show codegen log
+        if: always()
+        shell: bash
+        run: |
+          echo "=============================================="
+          echo " ReXGlue codegen log"
+          echo "=============================================="
+          if [ -f "blackops1_codegen.log" ]; then
+            cat blackops1_codegen.log
+          else
+            echo "No codegen log was produced."
+          fi
+
+      - name: Upload codegen results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: blackops1-recomp-v0.1-generated
+          name: BlackOps1-Recomp-v0.1-codegen
           path: |
             generated/
-            *.log
-          if-no-files-found: ignore
+            blackops1_codegen.log
+          if-no-files-found: warn
