@@ -1,0 +1,96 @@
+name: BlackOps1-Recomp v0.1
+
+on:
+  workflow_dispatch:
+
+jobs:
+  codegen:
+    name: ReXGlue 0.10.0 codegen probe
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check game input
+        shell: bash
+        run: |
+          set -e
+          if [ ! -f "game/default.xex" ]; then
+            echo "::error::game/default.xex is missing."
+            echo "For copyright reasons the repository does not contain the game."
+            echo "Add your own legally obtained XEX through your private build setup."
+            exit 1
+          fi
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            git \
+            python3 \
+            python3-pip
+
+      - name: Fetch ReXGlue 0.10.0
+        shell: bash
+        run: |
+          set -e
+          git clone --depth 1 --branch v0.10.0 \
+            https://github.com/rexglue/rexglue-sdk.git \
+            rexglue-sdk
+
+      - name: Show ReXGlue revision
+        working-directory: rexglue-sdk
+        run: |
+          git rev-parse HEAD
+          git status --short
+
+      - name: Locate ReXGlue CLI
+        shell: bash
+        run: |
+          set -e
+          echo "Repository contents:"
+          find rexglue-sdk -maxdepth 3 -type f \
+            \( -name '*rexglue*' -o -name '*.py' -o -name 'CMakeLists.txt' \) \
+            | sort | head -200
+
+      - name: Run project preparation
+        shell: bash
+        run: |
+          chmod +x setup.sh
+          ./setup.sh
+
+      - name: Codegen
+        shell: bash
+        run: |
+          set -e
+          echo "=== ReXGlue 0.10.0 codegen probe ==="
+          echo "The exact CLI entry point can change between SDK layouts."
+          echo "This step intentionally stops with a diagnostic until"
+          echo "the installed SDK exposes the expected CLI command."
+          echo
+          echo "Manifest:"
+          cat blackops1_manifest.toml
+          echo
+          echo "XEX:"
+          file game/default.xex
+          ls -lh game/default.xex
+          echo
+          echo "SDK candidates:"
+          find rexglue-sdk -type f -perm -111 | sort | head -100
+          echo
+          echo "NEXT STEP: wire the discovered v0.10.0 CLI entry point here."
+          exit 2
+
+      - name: Upload generated output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blackops1-recomp-v0.1-generated
+          path: |
+            generated/
+            *.log
+          if-no-files-found: ignore
