@@ -1,0 +1,28 @@
+# Game files / copyrighted binaries
+game/default.xex
+game/*.xex
+game/*.iso
+game/*.xex.*
+game/
+
+# ReXGlue generated output
+generated/
+build/
+out/
+artifacts/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Native build
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+compile_commands.json
+
+# OS
+.DS_Store
+Thumbs.db
