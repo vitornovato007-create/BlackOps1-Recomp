@@ -42,6 +42,7 @@ jobs:
           set -e
           git clone --depth 1 --branch v0.10.0 https://github.com/rexglue/rexglue-sdk.git rexglue-sdk
           cd rexglue-sdk
+          git submodule update --init --recursive
           echo "ReXGlue commit:"
           git rev-parse HEAD
           echo "ReXGlue tag:"
