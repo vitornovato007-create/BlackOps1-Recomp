@@ -8,12 +8,12 @@
  * @license     BSD 3-Clause License
  *              See LICENSE file in the project root for full license text.
  */
-#include <expected>
+
+#include <rex/system/map_parser.h>
+
 #include <charconv>
 #include <fstream>
 #include <sstream>
-
-#include <rex/system/map_parser.h>
 
 namespace rex::runtime {
 
