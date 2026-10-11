@@ -17,30 +17,28 @@ jobs:
     timeout-minutes: 120
 
     steps:
-      # 1. Baixa os arquivos do repositório.
       - name: Checkout do projeto
         uses: actions/checkout@v4
 
-      # 2. Verifica os arquivos necessários.
-      - name: Verificar arquivos do projeto
+      # 1. Verifica os arquivos do projeto.
+      - name: Verificar arquivos
         shell: bash
         run: |
           set -euo pipefail
 
           test -f blackops1_manifest.toml
-          test -f tools/patch-sdk.sh
           test -f src/main.cpp
 
           if [ ! -f game/default.xex ]; then
             echo "::error::game/default.xex não encontrado."
-            echo "Adicione o executável autorizado ao local esperado."
+            echo "Adicione um executável de jogo obtido legalmente."
             exit 1
           fi
 
           echo "Arquivos básicos encontrados."
 
-      # 3. Instala as dependências.
-      - name: Instalar dependências
+      # 2. Instala o Clang 20 e as dependências.
+      - name: Instalar Clang 20 e dependências
         shell: bash
         run: |
           set -euo pipefail
@@ -48,18 +46,19 @@ jobs:
           sudo apt-get update
 
           sudo apt-get install -y \
-            build-essential \
-            gcc \
-            g++ \
+            wget \
+            ca-certificates \
+            git \
             cmake \
             ninja-build \
-            git \
-            pkg-config \
+            build-essential \
             python3 \
             python3-pip \
             python3-venv \
+            pkg-config \
             libssl-dev \
             libvulkan-dev \
+            libgtk-3-dev \
             libx11-dev \
             libxext-dev \
             libxrandr-dev \
@@ -67,92 +66,103 @@ jobs:
             libxcursor-dev \
             libxi-dev
 
-      # 4. Baixa o SDK sem falhar se a pasta já existir.
+          wget https://apt.llvm.org/llvm.sh \
+            -O /tmp/llvm.sh
+
+          chmod +x /tmp/llvm.sh
+          sudo bash /tmp/llvm.sh 20
+
+          sudo apt-get install -y clang-20
+
+      # 3. Confirma a versão do compilador.
+      - name: Verificar versão do Clang
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          clang-20 --version
+          clang++-20 --version
+
+          VERSION="$(clang++-20 -dumpversion)"
+          MAJOR="${VERSION%%.*}"
+
+          if [ "$MAJOR" -lt 20 ]; then
+            echo "::error::Clang 20 ou superior é necessário."
+            exit 1
+          fi
+
+      # 4. Baixa o SDK na versão escolhida.
       - name: Baixar ReXGlue SDK
         shell: bash
         run: |
           set -euo pipefail
 
-          if [ -d "rexglue-sdk/.git" ]; then
-            echo "Repositório ReXGlue já existe."
+          rm -rf rexglue-sdk
 
-            git -C rexglue-sdk fetch --tags --force
-            git -C rexglue-sdk checkout --force v0.10.0
-            git -C rexglue-sdk submodule update --init --recursive
+          git clone \
+            --recursive \
+            --branch v0.10.0 \
+            https://github.com/rexglue/rexglue-sdk.git \
+            rexglue-sdk
 
-          else
-            echo "Preparando uma pasta limpa para o SDK."
-
-            rm -rf rexglue-sdk
-
-            git clone \
-              --recursive \
-              --branch v0.10.0 \
-              https://github.com/rexglue/rexglue-sdk.git \
-              rexglue-sdk
-          fi
-
-          echo "===== VERSÃO DO RE XGLUE ====="
+          echo "===== VERSÃO DO SDK ====="
           git -C rexglue-sdk describe --tags --always
 
-      # 5. Aplica as correções de compatibilidade.
-      - name: Aplicar patches no SDK
+      # 5. Testa o suporte a C++23 antes da compilação.
+      - name: Testar expected e unexpected
         shell: bash
         run: |
           set -euo pipefail
-          bash tools/patch-sdk.sh
-
-      # 6. Verifica o suporte a C++23.
-      - name: Testar suporte C++23
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          g++ --version
 
           cat > /tmp/test_expected.cpp <<'EOF'
           #include <expected>
           #include <string>
 
           std::expected<int, std::string> testar(bool ok) {
-            if (ok) {
-              return 42;
-            }
+              if (ok) {
+                  return 42;
+              }
 
-            return std::unexpected(std::string("erro"));
+              return std::unexpected(std::string("erro"));
           }
 
           int main() {
-            auto resultado = testar(true);
-            return resultado.value() == 42 ? 0 : 1;
+              auto resultado = testar(true);
+              return resultado.value() == 42 ? 0 : 1;
           }
           EOF
 
-          g++ -std=c++23 -fsyntax-only /tmp/test_expected.cpp
+          clang++-20 \
+            -std=c++23 \
+            -stdlib=libstdc++ \
+            -fsyntax-only \
+            /tmp/test_expected.cpp
 
-          echo "std::expected e std::unexpected reconhecidos."
+          echo "OK: expected e unexpected funcionam."
 
-      # 7. Configura o CMake usando GCC.
+      # 6. Configura o CMake com Clang 20.
       - name: Configure CMake
         shell: bash
         run: |
           set -euo pipefail
 
-          export CC=gcc
-          export CXX=g++
+          export CC=clang-20
+          export CXX=clang++-20
+
+          rm -rf build
 
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_COMPILER=gcc \
-            -DCMAKE_CXX_COMPILER=g++ \
+            -DCMAKE_C_COMPILER=clang-20 \
+            -DCMAKE_CXX_COMPILER=clang++-20 \
             -DCMAKE_CXX_STANDARD=23 \
             -DCMAKE_CXX_STANDARD_REQUIRED=ON \
             -DCMAKE_CXX_EXTENSIONS=OFF \
             -DREXGLUE_ENABLE_TRACY=OFF \
             -DREXGLUE_ENABLE_PERF_COUNTERS=OFF \
-            -DCMAKE_CXX_FLAGS="-mssse3 -ffp-contract=off"
+            -DCMAKE_CXX_FLAGS="-march=x86-64-v2"
 
-      # 8. Compila o projeto.
+      # 7. Compila os alvos configurados.
       - name: Build Project
         shell: bash
         run: |
@@ -160,16 +170,16 @@ jobs:
 
           cmake --build build \
             --config Release \
-            --parallel "$(nproc)"
+            --parallel 2
 
-      # 9. Procura executáveis e arquivos gerados.
-      - name: Localizar ferramentas geradas
+      # 8. Mostra os arquivos produzidos.
+      - name: Inspecionar resultados
         if: success()
         shell: bash
         run: |
           set -euo pipefail
 
-          echo "===== EXECUTÁVEIS DO SDK ====="
+          echo "===== EXECUTÁVEIS ====="
 
           find build rexglue-sdk \
             -type f -executable \
@@ -178,11 +188,11 @@ jobs:
           echo "===== ARQUIVOS GERADOS ====="
 
           find generated \
-            -maxdepth 3 -type f \
+            -maxdepth 4 -type f \
             -print 2>/dev/null || true
 
-      # 10. Salva os artefatos para análise.
-      - name: Upload dos artefatos
+      # 9. Guarda os resultados para diagnóstico.
+      - name: Salvar artefatos
         if: always()
         uses: actions/upload-artifact@v4
         with:
