@@ -57,6 +57,7 @@ jobs:
 
       - name: Configure CMake
         run: |
+          set -e
           export CC=clang
           export CXX=clang++
           cmake -B build -G Ninja \
@@ -68,19 +69,52 @@ jobs:
             -DREXGLUE_ENABLE_PERF_COUNTERS=OFF \
             -DCMAKE_CXX_FLAGS="-mssse3"
 
+      - name: Diagnose C++23 expected support
+        shell: bash
+        run: |
+          set -eux
+
+          echo "===== VERSAO DO CLANG ====="
+          clang++ --version
+
+          echo "===== VERSAO DO GCC ====="
+          g++ --version
+
+          echo "===== TESTE std::expected COM CLANG + libstdc++ ====="
+          cat > /tmp/test_expected.cpp <<'EOF'
+          #include <expected>
+
+          int main() {
+            std::expected<int, int> value = 1;
+            return value.value() - 1;
+          }
+          EOF
+
+          clang++ -std=c++23 -stdlib=libstdc++ -fsyntax-only /tmp/test_expected.cpp
+
+          echo "===== TESTE std::expected COM GCC ====="
+          g++ -std=c++23 -fsyntax-only /tmp/test_expected.cpp
+
+          echo "===== OS TESTES DE std::expected PASSARAM ====="
+
       - name: Build Project
         run: |
-          cmake --build build --config Release --parallel $(nproc)
+          set -e
+          cmake --build build --config Release --parallel "$(nproc)"
 
       - name: Run Codegen / Verify Manifest
         run: |
           set -e
+
           REXGLUE_BIN="$(find build -type f -name "rexglue" -perm -111 | head -n 1)"
+
           if [ -n "$REXGLUE_BIN" ]; then
             echo "Executável do ReXGlue encontrado: $REXGLUE_BIN"
             "$REXGLUE_BIN" --help || true
             mkdir -p generated
-            "$REXGLUE_BIN" codegen blackops1_manifest.toml --log_level info --log_file blackops1_codegen.log
+            "$REXGLUE_BIN" codegen blackops1_manifest.toml \
+              --log_level info \
+              --log_file blackops1_codegen.log
           else
             echo "Aviso: Binário do rexglue não localizado diretamente, mas a compilação ocorreu."
           fi
