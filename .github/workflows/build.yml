@@ -72,30 +72,35 @@ jobs:
       - name: Diagnose C++23 expected support
         shell: bash
         run: |
-          set -eux
-
           echo "===== VERSAO DO CLANG ====="
-          clang++ --version
+          clang++ --version || true
 
           echo "===== VERSAO DO GCC ====="
-          g++ --version
+          g++ --version || true
 
-          echo "===== TESTE std::expected COM CLANG + libstdc++ ====="
           cat > /tmp/test_expected.cpp <<'EOF'
           #include <expected>
-
           int main() {
             std::expected<int, int> value = 1;
             return value.value() - 1;
           }
           EOF
 
-          clang++ -std=c++23 -stdlib=libstdc++ -fsyntax-only /tmp/test_expected.cpp
+          echo "===== TESTE COM GCC ====="
+          if g++ -std=c++23 -fsyntax-only /tmp/test_expected.cpp; then
+            echo "GCC_EXPECTED=OK"
+          else
+            echo "GCC_EXPECTED=FALHOU"
+          fi
 
-          echo "===== TESTE std::expected COM GCC ====="
-          g++ -std=c++23 -fsyntax-only /tmp/test_expected.cpp
+          echo "===== TESTE COM CLANG E LIBSTDC++ ====="
+          if clang++ -std=c++23 -stdlib=libstdc++ -fsyntax-only /tmp/test_expected.cpp; then
+            echo "CLANG_EXPECTED=OK"
+          else
+            echo "CLANG_EXPECTED=FALHOU"
+          fi
 
-          echo "===== OS TESTES DE std::expected PASSARAM ====="
+          echo "===== FIM DO DIAGNOSTICO ====="
 
       - name: Build Project
         run: |
