@@ -1,135 +1,168 @@
-name: BlackOps1-Recomp Build
+name: Build BlackOps1-Recomp
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blackops1-recomp-build
+  cancel-in-progress: false
 
 jobs:
   build:
-    name: Build Black Ops 1 Recomp
+    name: Compilar ReXGlue e BlackOps1
     runs-on: ubuntu-24.04
-
-    permissions:
-      contents: write
+    timeout-minutes: 120
 
     steps:
-      - name: Checkout project
+      # 1. Baixa os arquivos do repositório.
+      - name: Checkout do projeto
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          submodules: recursive
-          fetch-depth: 0
-          fetch-tags: true
 
-      - name: Verify Black Ops 1 XEX
+      # 2. Confere os arquivos necessários.
+      - name: Verificar arquivos do projeto
+        shell: bash
         run: |
-          set -e
-          if [ ! -f "game/default.xex" ]; then
-            echo "::error::game/default.xex was not found. Certifique-se de que o executável está na pasta game/."
+          set -euo pipefail
+
+          test -f blackops1_manifest.toml
+          test -f tools/patch-sdk.sh
+          test -f src/main.cpp
+
+          if [ ! -f game/default.xex ]; then
+            echo "::error::game/default.xex não encontrado."
+            echo "Adicione o executável autorizado ao local esperado."
             exit 1
           fi
-          echo "Black Ops 1 XEX encontrado com sucesso."
 
-      - name: Ensure ReXGlue SDK is cloned with submodules
-        run: |
-          set -e
-          rm -rf rexglue-sdk
-          git clone --recursive --branch v0.10.0 https://github.com/rexglue/rexglue-sdk.git rexglue-sdk
+          echo "Arquivos básicos encontrados."
 
-      - name: Install build dependencies
+      # 3. Instala compiladores e ferramentas.
+      - name: Instalar dependências
+        shell: bash
         run: |
-          set -e
+          set -euo pipefail
+
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential clang lld cmake ninja-build git python3 pkg-config libvulkan-dev \
-            libx11-xcb-dev libxcb1-dev libx11-dev libglu1-mesa-dev libxi-dev libxrandr-dev \
-            libxinerama-dev libxcursor-dev libxss-dev libasound2-dev libpulse-dev libjack-dev \
-            libpipewire-0.3-dev libwayland-dev libxkbcommon-dev libibus-1.0-dev libudev-dev libxtst-dev
+            build-essential \
+            gcc \
+            g++ \
+            cmake \
+            ninja-build \
+            git \
+            pkg-config \
+            python3 \
+            python3-pip \
+            python3-venv \
+            libssl-dev \
+            libvulkan-dev \
+            libx11-dev \
+            libxext-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcursor-dev \
+            libxi-dev
 
-      - name: Apply C++23 Patches via Script
+      # 4. Baixa o SDK na versão escolhida.
+      - name: Baixar ReXGlue SDK
+        shell: bash
         run: |
-          set -e
-          chmod +x tools/patch-sdk.sh
-          ./tools/patch-sdk.sh
+          set -euo pipefail
 
+          git clone \
+            --recursive \
+            --branch v0.10.0 \
+            https://github.com/rexglue/rexglue-sdk.git \
+            rexglue-sdk
+
+      # 5. Aplica os patches de compatibilidade.
+      - name: Aplicar patches no SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/patch-sdk.sh
+
+      # 6. Verifica expected e unexpected com GCC.
+      - name: Testar suporte C++23
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          g++ --version
+
+          cat > /tmp/test_expected.cpp <<'EOF'
+          #include <expected>
+          #include <string>
+
+          std::expected<int, std::string> testar(bool ok) {
+            if (ok) {
+              return 42;
+            }
+            return std::unexpected(std::string("erro"));
+          }
+
+          int main() {
+            auto resultado = testar(true);
+            return resultado.value() == 42 ? 0 : 1;
+          }
+          EOF
+
+          g++ -std=c++23 -fsyntax-only /tmp/test_expected.cpp
+          echo "std::expected e std::unexpected reconhecidos."
+
+      # 7. Configura o CMake usando GCC.
       - name: Configure CMake
+        shell: bash
         run: |
-          set -e
-          export CC=clang
-          export CXX=clang++
+          set -euo pipefail
+
+          export CC=gcc
+          export CXX=g++
+
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=gcc \
+            -DCMAKE_CXX_COMPILER=g++ \
             -DCMAKE_CXX_STANDARD=23 \
             -DCMAKE_CXX_STANDARD_REQUIRED=ON \
             -DCMAKE_CXX_EXTENSIONS=OFF \
             -DREXGLUE_ENABLE_TRACY=OFF \
             -DREXGLUE_ENABLE_PERF_COUNTERS=OFF \
-            -DCMAKE_CXX_FLAGS="-mssse3"
+            -DCMAKE_CXX_FLAGS="-mssse3 -ffp-contract=off"
 
-      - name: Diagnose C++23 expected support
+      # 8. Compila o SDK e os alvos registrados no CMake.
+      - name: Build Project
         shell: bash
         run: |
-          echo "===== VERSAO DO CLANG ====="
-          clang++ --version || true
-
-          echo "===== VERSAO DO GCC ====="
-          g++ --version || true
-
-          cat > /tmp/test_expected.cpp <<'EOF'
-          #include <expected>
-          int main() {
-            std::expected<int, int> value = 1;
-            return value.value() - 1;
-          }
-          EOF
-
-          echo "===== TESTE COM GCC ====="
-          if g++ -std=c++23 -fsyntax-only /tmp/test_expected.cpp; then
-            echo "GCC_EXPECTED=OK"
-          else
-            echo "GCC_EXPECTED=FALHOU"
-          fi
-
-          echo "===== TESTE COM CLANG E LIBSTDC++ ====="
-          if clang++ -std=c++23 -stdlib=libstdc++ -fsyntax-only /tmp/test_expected.cpp; then
-            echo "CLANG_EXPECTED=OK"
-          else
-            echo "CLANG_EXPECTED=FALHOU"
-          fi
-
-          echo "===== FIM DO DIAGNOSTICO ====="
-
-      - name: Build Project
-        run: |
-          set -e
+          set -euo pipefail
           cmake --build build --config Release --parallel "$(nproc)"
 
-      - name: Run Codegen / Verify Manifest
+      # 9. Registra os executáveis encontrados para diagnóstico.
+      - name: Localizar ferramentas geradas
+        if: success()
+        shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
-          REXGLUE_BIN="$(find build -type f -name "rexglue" -perm -111 | head -n 1)"
+          echo "===== EXECUTÁVEIS DO SDK ====="
+          find build rexglue-sdk \
+            -type f -executable \
+            -printf '%p\n' 2>/dev/null | sort || true
 
-          if [ -n "$REXGLUE_BIN" ]; then
-            echo "Executável do ReXGlue encontrado: $REXGLUE_BIN"
-            "$REXGLUE_BIN" --help || true
-            mkdir -p generated
-            "$REXGLUE_BIN" codegen blackops1_manifest.toml \
-              --log_level info \
-              --log_file blackops1_codegen.log
-          else
-            echo "Aviso: Binário do rexglue não localizado diretamente, mas a compilação ocorreu."
-          fi
+          echo "===== ARQUIVOS GERADOS ====="
+          find generated -maxdepth 3 -type f -print 2>/dev/null || true
 
-      - name: Upload Build Artifacts
+      # 10. Salva os arquivos gerados, caso existam.
+      - name: Upload dos artefatos
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: BlackOps1-Recomp-Artifacts
+          name: blackops1-recomp-build
           path: |
+            build/
             generated/
-            blackops1_codegen.log
-          if-no-files-found: ignore
+          if-no-files-found: warn
+          retention-days: 7
