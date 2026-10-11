@@ -10,7 +10,7 @@
  */
 
 #pragma once
-
+#include <expected>
 #include <cstdint>
 #include <expected>
 #include <filesystem>
