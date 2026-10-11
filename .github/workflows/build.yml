@@ -33,24 +33,12 @@ jobs:
           fi
           echo "Black Ops 1 XEX encontrado com sucesso."
 
-      - name: Ensure ReXGlue SDK is present and update submodules
+      - name: Ensure ReXGlue SDK is cloned with submodules
         run: |
           set -e
-          if [ ! -f "rexglue-sdk/CMakeLists.txt" ]; then
-            echo "Baixando o código-fonte do ReXGlue SDK v0.10.0..."
-            curl -L -o rexglue-source.zip https://github.com/rexglue/rexglue-sdk/archive/refs/tags/v0.10.0.zip
-            unzip -q rexglue-source.zip
-            rm -rf rexglue-sdk
-            mv rexglue-sdk-0.10.0 rexglue-sdk
-            rm rexglue-source.zip
-          else
-            echo "ReXGlue SDK já está presente no repositório."
-          fi
-          
-          # Inicializa e atualiza os submódulos internos do SDK (como o cli11)
-          cd rexglue-sdk
-          git submodule update --init --recursive || true
-          cd ..
+          # Remove a pasta anterior se veio do ZIP e clona via Git com submódulos
+          rm -rf rexglue-sdk
+          git clone --recursive --branch v0.10.0 https://github.com/rexglue/rexglue-sdk.git rexglue-sdk
 
       - name: Install build dependencies
         run: |
