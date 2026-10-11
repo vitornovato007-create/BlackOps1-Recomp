@@ -17,10 +17,13 @@ jobs:
     timeout-minutes: 120
 
     steps:
+      # 1. Baixa os arquivos do projeto.
       - name: Checkout do projeto
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      # 1. Verifica os arquivos do projeto.
+      # 2. Confere os arquivos necessários.
       - name: Verificar arquivos
         shell: bash
         run: |
@@ -31,14 +34,14 @@ jobs:
 
           if [ ! -f game/default.xex ]; then
             echo "::error::game/default.xex não encontrado."
-            echo "Adicione um executável de jogo obtido legalmente."
+            echo "Adicione o executável autorizado ao local esperado."
             exit 1
           fi
 
           echo "Arquivos básicos encontrados."
 
-      # 2. Instala o Clang 20 e as dependências.
-      - name: Instalar Clang 20 e dependências
+      # 3. Instala Clang 20 e dependências do SDL3.
+      - name: Instalar dependências
         shell: bash
         run: |
           set -euo pipefail
@@ -59,12 +62,32 @@ jobs:
             libssl-dev \
             libvulkan-dev \
             libgtk-3-dev \
+            libasound2-dev \
+            libpulse-dev \
+            libjack-dev \
+            libsndio-dev \
             libx11-dev \
             libxext-dev \
             libxrandr-dev \
-            libxinerama-dev \
             libxcursor-dev \
-            libxi-dev
+            libxfixes-dev \
+            libxi-dev \
+            libxss-dev \
+            libxtst-dev \
+            libxkbcommon-dev \
+            libdrm-dev \
+            libgbm-dev \
+            libgl1-mesa-dev \
+            libgles2-mesa-dev \
+            libegl1-mesa-dev \
+            libdbus-1-dev \
+            libibus-1.0-dev \
+            libudev-dev \
+            libthai-dev \
+            libusb-1.0-0-dev \
+            libpipewire-0.3-dev \
+            libwayland-dev \
+            libdecor-0-dev
 
           wget https://apt.llvm.org/llvm.sh \
             -O /tmp/llvm.sh
@@ -74,8 +97,8 @@ jobs:
 
           sudo apt-get install -y clang-20
 
-      # 3. Confirma a versão do compilador.
-      - name: Verificar versão do Clang
+      # 4. Confirma a versão do compilador.
+      - name: Verificar Clang 20
         shell: bash
         run: |
           set -euo pipefail
@@ -83,15 +106,7 @@ jobs:
           clang-20 --version
           clang++-20 --version
 
-          VERSION="$(clang++-20 -dumpversion)"
-          MAJOR="${VERSION%%.*}"
-
-          if [ "$MAJOR" -lt 20 ]; then
-            echo "::error::Clang 20 ou superior é necessário."
-            exit 1
-          fi
-
-      # 4. Baixa o SDK na versão escolhida.
+      # 5. Baixa o SDK ReXGlue.
       - name: Baixar ReXGlue SDK
         shell: bash
         run: |
@@ -105,10 +120,12 @@ jobs:
             https://github.com/rexglue/rexglue-sdk.git \
             rexglue-sdk
 
+          git -C rexglue-sdk fetch --tags --force
+
           echo "===== VERSÃO DO SDK ====="
           git -C rexglue-sdk describe --tags --always
 
-      # 5. Testa o suporte a C++23 antes da compilação.
+      # 6. Testa o suporte C++23.
       - name: Testar expected e unexpected
         shell: bash
         run: |
@@ -140,7 +157,7 @@ jobs:
 
           echo "OK: expected e unexpected funcionam."
 
-      # 6. Configura o CMake com Clang 20.
+      # 7. Configura o CMake.
       - name: Configure CMake
         shell: bash
         run: |
@@ -162,7 +179,7 @@ jobs:
             -DREXGLUE_ENABLE_PERF_COUNTERS=OFF \
             -DCMAKE_CXX_FLAGS="-march=x86-64-v2"
 
-      # 7. Compila os alvos configurados.
+      # 8. Compila o projeto.
       - name: Build Project
         shell: bash
         run: |
@@ -172,7 +189,7 @@ jobs:
             --config Release \
             --parallel 2
 
-      # 8. Mostra os arquivos produzidos.
+      # 9. Inspeciona os resultados.
       - name: Inspecionar resultados
         if: success()
         shell: bash
@@ -191,7 +208,7 @@ jobs:
             -maxdepth 4 -type f \
             -print 2>/dev/null || true
 
-      # 9. Guarda os resultados para diagnóstico.
+      # 10. Salva os artefatos.
       - name: Salvar artefatos
         if: always()
         uses: actions/upload-artifact@v4
