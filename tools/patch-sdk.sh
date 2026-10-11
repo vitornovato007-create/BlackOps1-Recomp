@@ -1,27 +1,51 @@
+bash
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-echo "Aplicando patches de compatibilidade C++23 no rexglue-sdk..."
+echo "=========================================="
+echo " PATCH DE COMPATIBILIDADE DO RE XGLUE"
+echo "=========================================="
 
-# 1. Patch no map_parser.h
-HEADER_FILE="rexglue-sdk/include/rex/system/map_parser.h"
-if [ -f "$HEADER_FILE" ] && ! grep -q "#include <expected>" "$HEADER_FILE"; then
+SDK_DIR="rexglue-sdk"
+
+if [ ! -d "$SDK_DIR" ]; then
+    echo "ERRO: pasta rexglue-sdk não encontrada."
+    exit 1
+fi
+
+# 1. Adiciona o cabeçalho expected quando necessário.
+HEADER_FILE="$SDK_DIR/include/rex/system/map_parser.h"
+
+if [ -f "$HEADER_FILE" ] && ! grep -q '#include <expected>' "$HEADER_FILE"; then
     sed -i '/#include <vector>/a #include <expected>' "$HEADER_FILE"
-    echo "Injetado #include <expected> em map_parser.h"
+    echo "Patch aplicado: map_parser.h"
 fi
 
-# 2. Patch no map_parser.cpp
-CPP_FILE="rexglue-sdk/src/system/map_parser.cpp"
-if [ -f "$CPP_FILE" ] && ! grep -q "#include <expected>" "$CPP_FILE"; then
+CPP_FILE="$SDK_DIR/src/system/map_parser.cpp"
+
+if [ -f "$CPP_FILE" ] && ! grep -q '#include <expected>' "$CPP_FILE"; then
     sed -i '1i #include <expected>' "$CPP_FILE"
-    echo "Injetado #include <expected> em map_parser.cpp"
+    echo "Patch aplicado: map_parser.cpp"
 fi
 
-# 3. Garante no Precompiled Header (PCH) do SDK
-PCH_FILE=$(find rexglue-sdk -name "cmake_pch.hxx" | head -n 1)
-if [ -n "$PCH_FILE" ] && [ -f "$PCH_FILE" ] && ! grep -q "#include <expected>" "$PCH_FILE"; then
-    echo "#include <expected>" >> "$PCH_FILE"
-    echo "Injetado #include <expected> no PCH do projeto"
+# 2. Adapta a opção de ponto flutuante do Clang para GCC.
+# O GCC aceita -ffp-contract=off.
+while IFS= read -r -d '' FILE; do
+    if grep -q -- '-ffp-model=strict' "$FILE"; then
+        sed -i 's/-ffp-model=strict/-ffp-contract=off/g' "$FILE"
+        echo "Opção de compilação adaptada em: $FILE"
+    fi
+done < <(
+    grep -rlZ --exclude-dir=.git -- '-ffp-model=strict' "$SDK_DIR" || true
+)
+
+# 3. Mostra se ainda restou a opção incompatível.
+if grep -rl --exclude-dir=.git -- '-ffp-model=strict' "$SDK_DIR"; then
+    echo "AVISO: ainda existem ocorrências da opção do Clang."
+else
+    echo "Verificação: opção do Clang não encontrada no SDK."
 fi
 
-echo "Patches aplicados com sucesso!"
+echo "=========================================="
+echo " PATCHES CONCLUÍDOS"
+echo "=========================================="
