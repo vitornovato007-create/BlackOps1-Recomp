@@ -10,7 +10,7 @@
  */
 
 #pragma once
-#include <expected>
+
 #include <cstdint>
 #include <expected>
 #include <filesystem>
@@ -39,7 +39,12 @@ struct MapParseOptions {
 /**
  * Error types for map parsing operations.
  */
-enum class MapParseError { FileNotFound, FileReadError, InvalidFormat, Empty };
+enum class MapParseError {
+  FileNotFound,
+  FileReadError,
+  InvalidFormat,
+  Empty
+};
 
 /**
  * Get a human-readable string for a MapParseError.
@@ -62,14 +67,14 @@ constexpr std::string_view to_string(MapParseError error) {
  * Parse an nm-style map file (format: "address type name").
  *
  * This is the format produced by `nm` on Unix systems:
- *   00000000 t test_add1
- *   00000010 T test_sub1
+ *    00000000 t test_add1
+ *    00000010 T test_sub1
  *
  * Symbol types:
- *   T/t = text (code)
- *   D/d = data
- *   B/b = bss
- *   U   = undefined
+ *    T/t = text (code)
+ *    D/d = data
+ *    B/b = bss
+ *    U   = undefined
  *
  * @param map_path    Path to the .map file
  * @param options     Parsing options (base address, filters)
