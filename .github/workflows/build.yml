@@ -67,6 +67,7 @@ jobs:
             libjack-dev \
             libsndio-dev \
             libx11-dev \
+            libx11-xcb-dev \
             libxext-dev \
             libxrandr-dev \
             libxcursor-dev \
