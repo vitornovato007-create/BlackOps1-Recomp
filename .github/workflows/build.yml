@@ -20,6 +20,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          submodules: recursive
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Verify Black Ops 1 XEX
         run: |
@@ -30,7 +33,7 @@ jobs:
           fi
           echo "Black Ops 1 XEX encontrado com sucesso."
 
-      - name: Ensure ReXGlue SDK is present
+      - name: Ensure ReXGlue SDK is present and update submodules
         run: |
           set -e
           if [ ! -f "rexglue-sdk/CMakeLists.txt" ]; then
@@ -43,6 +46,11 @@ jobs:
           else
             echo "ReXGlue SDK já está presente no repositório."
           fi
+          
+          # Inicializa e atualiza os submódulos internos do SDK (como o cli11)
+          cd rexglue-sdk
+          git submodule update --init --recursive || true
+          cd ..
 
       - name: Install build dependencies
         run: |
