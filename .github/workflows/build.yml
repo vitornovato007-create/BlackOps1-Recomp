@@ -21,7 +21,7 @@ jobs:
       - name: Checkout do projeto
         uses: actions/checkout@v4
 
-      # 2. Confere os arquivos necessários.
+      # 2. Verifica os arquivos necessários.
       - name: Verificar arquivos do projeto
         shell: bash
         run: |
@@ -39,13 +39,14 @@ jobs:
 
           echo "Arquivos básicos encontrados."
 
-      # 3. Instala compiladores e ferramentas.
+      # 3. Instala as dependências.
       - name: Instalar dependências
         shell: bash
         run: |
           set -euo pipefail
 
           sudo apt-get update
+
           sudo apt-get install -y \
             build-essential \
             gcc \
@@ -66,26 +67,42 @@ jobs:
             libxcursor-dev \
             libxi-dev
 
-      # 4. Baixa o SDK na versão escolhida.
+      # 4. Baixa o SDK sem falhar se a pasta já existir.
       - name: Baixar ReXGlue SDK
         shell: bash
         run: |
           set -euo pipefail
 
-          git clone \
-            --recursive \
-            --branch v0.10.0 \
-            https://github.com/rexglue/rexglue-sdk.git \
-            rexglue-sdk
+          if [ -d "rexglue-sdk/.git" ]; then
+            echo "Repositório ReXGlue já existe."
 
-      # 5. Aplica os patches de compatibilidade.
+            git -C rexglue-sdk fetch --tags --force
+            git -C rexglue-sdk checkout --force v0.10.0
+            git -C rexglue-sdk submodule update --init --recursive
+
+          else
+            echo "Preparando uma pasta limpa para o SDK."
+
+            rm -rf rexglue-sdk
+
+            git clone \
+              --recursive \
+              --branch v0.10.0 \
+              https://github.com/rexglue/rexglue-sdk.git \
+              rexglue-sdk
+          fi
+
+          echo "===== VERSÃO DO RE XGLUE ====="
+          git -C rexglue-sdk describe --tags --always
+
+      # 5. Aplica as correções de compatibilidade.
       - name: Aplicar patches no SDK
         shell: bash
         run: |
           set -euo pipefail
           bash tools/patch-sdk.sh
 
-      # 6. Verifica expected e unexpected com GCC.
+      # 6. Verifica o suporte a C++23.
       - name: Testar suporte C++23
         shell: bash
         run: |
@@ -101,6 +118,7 @@ jobs:
             if (ok) {
               return 42;
             }
+
             return std::unexpected(std::string("erro"));
           }
 
@@ -111,6 +129,7 @@ jobs:
           EOF
 
           g++ -std=c++23 -fsyntax-only /tmp/test_expected.cpp
+
           echo "std::expected e std::unexpected reconhecidos."
 
       # 7. Configura o CMake usando GCC.
@@ -133,14 +152,17 @@ jobs:
             -DREXGLUE_ENABLE_PERF_COUNTERS=OFF \
             -DCMAKE_CXX_FLAGS="-mssse3 -ffp-contract=off"
 
-      # 8. Compila o SDK e os alvos registrados no CMake.
+      # 8. Compila o projeto.
       - name: Build Project
         shell: bash
         run: |
           set -euo pipefail
-          cmake --build build --config Release --parallel "$(nproc)"
 
-      # 9. Registra os executáveis encontrados para diagnóstico.
+          cmake --build build \
+            --config Release \
+            --parallel "$(nproc)"
+
+      # 9. Procura executáveis e arquivos gerados.
       - name: Localizar ferramentas geradas
         if: success()
         shell: bash
@@ -148,14 +170,18 @@ jobs:
           set -euo pipefail
 
           echo "===== EXECUTÁVEIS DO SDK ====="
+
           find build rexglue-sdk \
             -type f -executable \
             -printf '%p\n' 2>/dev/null | sort || true
 
           echo "===== ARQUIVOS GERADOS ====="
-          find generated -maxdepth 3 -type f -print 2>/dev/null || true
 
-      # 10. Salva os arquivos gerados, caso existam.
+          find generated \
+            -maxdepth 3 -type f \
+            -print 2>/dev/null || true
+
+      # 10. Salva os artefatos para análise.
       - name: Upload dos artefatos
         if: always()
         uses: actions/upload-artifact@v4
