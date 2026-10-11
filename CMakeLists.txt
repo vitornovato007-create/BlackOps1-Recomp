@@ -1,23 +1,13 @@
 cmake_minimum_required(VERSION 3.22)
+project(BlackOps1Recomp CXX)
 
-project(BlackOps1Recomp
-    VERSION 0.1.0
-    LANGUAGES C CXX
-)
-
+# Força rigorosamente o C++23 globalmente
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_library(blackops1_stub STATIC
-    src/main.cpp
-)
+# Adiciona o SDK do ReXGlue que baixamos
+add_subdirectory(rexglue-sdk)
 
-target_include_directories(blackops1_stub
-    PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-)
-
-message(STATUS "BlackOps1-Recomp v0.1")
-message(STATUS "This target is only a native scaffold.")
-message(STATUS "ReXGlue generated sources are added after successful codegen.")
+# Adiciona a pasta do aplicativo/jogo (onde ficarão os códigos do Black Ops 1)
+add_subdirectory(app)
