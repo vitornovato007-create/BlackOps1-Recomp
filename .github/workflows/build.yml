@@ -66,7 +66,7 @@ jobs:
             -DCMAKE_CXX_EXTENSIONS=OFF \
             -DREXGLUE_ENABLE_TRACY=OFF \
             -DREXGLUE_ENABLE_PERF_COUNTERS=OFF \
-            -DCMAKE_CXX_FLAGS="-msse3"
+            -DCMAKE_CXX_FLAGS="-mssse3"
 
       - name: Build Project
         run: |
