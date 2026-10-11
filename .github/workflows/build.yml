@@ -1,119 +1,36 @@
-name: BlackOps1-Recomp v0.1
+name: Baixar e Extrair ReXGlue SDK
 
 on:
   workflow_dispatch:
 
 jobs:
-  codegen:
-    name: ReXGlue 0.10.0 - Black Ops 1 Codegen
+  setup-sdk:
     runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout project
         uses: actions/checkout@v4
 
-      - name: Check Black Ops 1 XEX
-        shell: bash
+      - name: Download and Extract ReXGlue SDK
         run: |
           set -e
-          if [ ! -f "game/default.xex" ]; then
-            echo "::error::game/default.xex was not found."
-            echo "Place your legally obtained default.xex at game/default.xex"
-            exit 1
-          fi
-          echo "Black Ops 1 XEX found."
-          ls -lh game/default.xex
-          file game/default.xex
-
-      - name: Install build dependencies
-        shell: bash
-        run: |
-          set -e
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential clang lld cmake ninja-build git python3 python3-pip pkg-config libvulkan-dev \
-            libx11-xcb-dev libxcb1-dev libx11-dev libglu1-mesa-dev libxi-dev libxrandr-dev libxinerama-dev libxcursor-dev \
-            libxss-dev libasound2-dev libpulse-dev libjack-dev libpipewire-0.3-dev libwayland-dev libxkbcommon-dev libibus-1.0-dev libudev-dev libxtst-dev
-          clang++ --version
-          cmake --version
-
-      - name: Clone ReXGlue 0.10.0 and patch map files for C++23
-        shell: bash
-        run: |
-          set -e
-          git clone --depth 1 --branch v0.10.0 https://github.com/rexglue/rexglue-sdk.git rexglue-sdk
-          cd rexglue-sdk
-          git submodule update --init --recursive
+          echo "Baixando o arquivo ZIP do ReXGlue SDK v0.10.0..."
+          curl -L -o rexglue-source.zip https://github.com/rexglue/rexglue-sdk/archive/refs/tags/v0.10.0.zip
           
-          # Patch no Header (.h)
-          HEADER_FILE="include/rex/system/map_parser.h"
-          if [ -f "$HEADER_FILE" ]; then
-            echo "Patching $HEADER_FILE..."
-            if ! grep -q "#include <expected>" "$HEADER_FILE"; then
-              sed -i '/#include <vector>/a #include <expected>' "$HEADER_FILE"
-            fi
-          fi
+          echo "Extraindo..."
+          unzip -q rexglue-source.zip
+          
+          # Remove pasta antiga se houver e renomeia a extraída para rexglue-sdk
+          rm -rf rexglue-sdk
+          mv rexglue-sdk-0.10.0 rexglue-sdk
+          
+          # Remove o zip temporário
+          rm rexglue-source.zip
+          echo "SDK extraído e organizado com sucesso!"
 
-          # Patch no Source (.cpp) para garantir que o std::expected seja encontrado
-          CPP_FILE="src/system/map_parser.cpp"
-          if [ -f "$CPP_FILE" ]; then
-            echo "Patching $CPP_FILE..."
-            if ! grep -q "#include <expected>" "$CPP_FILE"; then
-              sed -i '1i #include <expected>' "$CPP_FILE"
-            fi
-          fi
-
-      - name: Configure ReXGlue
-        working-directory: rexglue-sdk
-        shell: bash
-        run: |
-          set -e
-          cmake --preset linux-amd64 -DCMAKE_CXX_STANDARD=23 -DCMAKE_CXX_STANDARD_REQUIRED=ON -DREXGLUE_ENABLE_TRACY=OFF -DREXGLUE_ENABLE_PERF_COUNTERS=OFF
-
-      - name: Build ReXGlue
-        working-directory: rexglue-sdk
-        shell: bash
-        run: |
-          set -e
-          cmake --build --preset linux-amd64-release --target rexglue --parallel $(nproc)
-
-      - name: Locate ReXGlue executable
-        shell: bash
-        run: |
-          set -e
-          REXGLUE_BIN="$(find rexglue-sdk -type f -name "rexglue" -perm -111 | head -n 1)"
-          if [ -z "$REXGLUE_BIN" ]; then
-            echo "::error::ReXGlue executable was not found."
-            exit 1
-          fi
-          echo "REXGLUE_BIN=$REXGLUE_BIN" >> "$GITHUB_ENV"
-          echo "Using: $REXGLUE_BIN"
-
-      - name: Test ReXGlue
-        shell: bash
-        run: |
-          set -e
-          "$REXGLUE_BIN" --help
-
-      - name: Prepare generated directory
-        shell: bash
-        run: |
-          set -e
-          mkdir -p generated
-
-      - name: ReXGlue Codegen
-        shell: bash
-        run: |
-          set -o pipefail
-          echo "Starting ReXGlue Codegen..."
-          "$REXGLUE_BIN" codegen blackops1_manifest.toml --log_level info --log_file blackops1_codegen.log
-
-      - name: Upload codegen results
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Commit changes back to repository
+        uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          name: BlackOps1-Recomp-v0.1-codegen
-          path: |
-            generated/
-            blackops1_codegen.log
-          if-no-files-found: warn
+          commit_message: "Auto-extracted ReXGlue SDK v0.10.0 into rexglue-sdk/"
+          branch: main
+          file_pattern: "rexglue-sdk/"
