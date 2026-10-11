@@ -2,50 +2,59 @@ bash
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "=========================================="
-echo " PATCH DE COMPATIBILIDADE DO RE XGLUE"
-echo "=========================================="
+echo "===== PATCH DE COMPATIBILIDADE RE XGLUE ====="
 
 SDK_DIR="rexglue-sdk"
+HEADER_FILE="$SDK_DIR/include/rex/system/map_parser.h"
+CPP_FILE="$SDK_DIR/src/system/map_parser.cpp"
 
 if [ ! -d "$SDK_DIR" ]; then
     echo "ERRO: pasta rexglue-sdk não encontrada."
     exit 1
 fi
 
-# 1. Adiciona o cabeçalho expected quando necessário.
-HEADER_FILE="$SDK_DIR/include/rex/system/map_parser.h"
-
-if [ -f "$HEADER_FILE" ] && ! grep -q '#include <expected>' "$HEADER_FILE"; then
-    sed -i '/#include <vector>/a #include <expected>' "$HEADER_FILE"
-    echo "Patch aplicado: map_parser.h"
+# Garante o include no header.
+if [ -f "$HEADER_FILE" ] &&
+   ! grep -q '#include <expected>' "$HEADER_FILE"; then
+    sed -i '1i #include <expected>' "$HEADER_FILE"
+    echo "Include adicionado em map_parser.h"
 fi
 
-CPP_FILE="$SDK_DIR/src/system/map_parser.cpp"
-
-if [ -f "$CPP_FILE" ] && ! grep -q '#include <expected>' "$CPP_FILE"; then
+# Garante o include no arquivo .cpp.
+if [ -f "$CPP_FILE" ] &&
+   ! grep -q '#include <expected>' "$CPP_FILE"; then
     sed -i '1i #include <expected>' "$CPP_FILE"
-    echo "Patch aplicado: map_parser.cpp"
+    echo "Include adicionado em map_parser.cpp"
 fi
 
-# 2. Adapta a opção de ponto flutuante do Clang para GCC.
-# O GCC aceita -ffp-contract=off.
+# Adapta a opção específica do Clang, se estiver escrita nos arquivos.
+grep -rlZ --exclude-dir=.git -- '-ffp-model=strict' "$SDK_DIR" |
 while IFS= read -r -d '' FILE; do
-    if grep -q -- '-ffp-model=strict' "$FILE"; then
-        sed -i 's/-ffp-model=strict/-ffp-contract=off/g' "$FILE"
-        echo "Opção de compilação adaptada em: $FILE"
-    fi
-done < <(
-    grep -rlZ --exclude-dir=.git -- '-ffp-model=strict' "$SDK_DIR" || true
-)
+    sed -i 's/-ffp-model=strict/-ffp-contract=off/g' "$FILE"
+    echo "Opção de compilação adaptada: $FILE"
+done
 
-# 3. Mostra se ainda restou a opção incompatível.
-if grep -rl --exclude-dir=.git -- '-ffp-model=strict' "$SDK_DIR"; then
-    echo "AVISO: ainda existem ocorrências da opção do Clang."
-else
-    echo "Verificação: opção do Clang não encontrada no SDK."
-fi
+echo "===== TESTE DE expected E unexpected ====="
 
-echo "=========================================="
-echo " PATCHES CONCLUÍDOS"
-echo "=========================================="
+cat > /tmp/test_expected.cpp <<'EOF'
+#include <expected>
+#include <string>
+
+std::expected<int, std::string> testar(bool sucesso) {
+    if (sucesso) {
+        return 42;
+    }
+
+    return std::unexpected(std::string("erro de teste"));
+}
+
+int main() {
+    auto resultado = testar(true);
+    return resultado.value() == 42 ? 0 : 1;
+}
+EOF
+
+g++ -std=c++23 -fsyntax-only /tmp/test_expected.cpp
+
+echo "OK: expected e unexpected reconhecidos pelo GCC."
+echo "===== PATCH CONCLUÍDO ====="
