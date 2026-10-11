@@ -37,7 +37,7 @@ jobs:
           clang++ --version
           cmake --version
 
-      - name: Clone ReXGlue 0.10.0 and patch map_parser.h
+      - name: Clone ReXGlue 0.10.0 and patch map files for C++23
         shell: bash
         run: |
           set -e
@@ -45,16 +45,22 @@ jobs:
           cd rexglue-sdk
           git submodule update --init --recursive
           
+          # Patch no Header (.h)
           HEADER_FILE="include/rex/system/map_parser.h"
           if [ -f "$HEADER_FILE" ]; then
             echo "Patching $HEADER_FILE..."
-            # Assegura que não vai duplicar caso já exista
             if ! grep -q "#include <expected>" "$HEADER_FILE"; then
               sed -i '/#include <vector>/a #include <expected>' "$HEADER_FILE"
             fi
-          else
-            echo "::error::Header file $HEADER_FILE not found!"
-            exit 1
+          fi
+
+          # Patch no Source (.cpp) para garantir que o std::expected seja encontrado
+          CPP_FILE="src/system/map_parser.cpp"
+          if [ -f "$CPP_FILE" ]; then
+            echo "Patching $CPP_FILE..."
+            if ! grep -q "#include <expected>" "$CPP_FILE"; then
+              sed -i '1i #include <expected>' "$CPP_FILE"
+            fi
           fi
 
       - name: Configure ReXGlue
