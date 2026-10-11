@@ -56,7 +56,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          cmake --preset linux-amd64-release -DREXGLUE_ENABLE_TRACY=OFF -DREXGLUE_ENABLE_PERF_COUNTERS=OFF
+          cmake --preset linux-amd64 -DREXGLUE_ENABLE_TRACY=OFF -DREXGLUE_ENABLE_PERF_COUNTERS=OFF
 
       - name: Build ReXGlue
         working-directory: rexglue-sdk
