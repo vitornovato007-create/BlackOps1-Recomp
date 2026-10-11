@@ -6,10 +6,16 @@ on:
 jobs:
   setup-sdk:
     runs-on: ubuntu-24.04
+    
+    # Permissão explícita de escrita exigida pelo git-auto-commit-action
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout project
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download and Extract ReXGlue SDK
         run: |
