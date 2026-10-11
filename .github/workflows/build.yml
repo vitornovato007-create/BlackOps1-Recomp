@@ -34,9 +34,7 @@ jobs:
             build-essential clang lld cmake ninja-build git python3 python3-pip pkg-config libvulkan-dev \
             libx11-xcb-dev libxcb1-dev libx11-dev libglu1-mesa-dev libxi-dev libxrandr-dev libxinerama-dev libxcursor-dev \
             libxss-dev libasound2-dev libpulse-dev libjack-dev libpipewire-0.3-dev libwayland-dev libxkbcommon-dev libibus-1.0-dev libudev-dev libxtst-dev
-          echo "Compiler:"
           clang++ --version
-          echo "CMake:"
           cmake --version
 
       - name: Clone ReXGlue 0.10.0 and patch map_parser.h
@@ -47,20 +45,17 @@ jobs:
           cd rexglue-sdk
           git submodule update --init --recursive
           
-          # Patch para incluir <expected> e resolver o erro do std::expected
           HEADER_FILE="include/rex/system/map_parser.h"
           if [ -f "$HEADER_FILE" ]; then
             echo "Patching $HEADER_FILE..."
-            sed -i '/#include <vector>/a #include <expected>' "$HEADER_FILE"
+            # Assegura que não vai duplicar caso já exista
+            if ! grep -q "#include <expected>" "$HEADER_FILE"; then
+              sed -i '/#include <vector>/a #include <expected>' "$HEADER_FILE"
+            fi
           else
             echo "::error::Header file $HEADER_FILE not found!"
             exit 1
           fi
-
-          echo "ReXGlue commit:"
-          git rev-parse HEAD
-          echo "ReXGlue tag:"
-          git describe --tags --always
 
       - name: Configure ReXGlue
         working-directory: rexglue-sdk
@@ -74,28 +69,24 @@ jobs:
         shell: bash
         run: |
           set -e
-          cmake --build --preset linux-amd64-release --target rexglue --parallel 2
+          cmake --build --preset linux-amd64-release --target rexglue --parallel $(nproc)
 
       - name: Locate ReXGlue executable
         shell: bash
         run: |
           set -e
-          echo "Searching for rexglue executable..."
-          find rexglue-sdk -type f -name "rexglue" -perm -111 -print
           REXGLUE_BIN="$(find rexglue-sdk -type f -name "rexglue" -perm -111 | head -n 1)"
           if [ -z "$REXGLUE_BIN" ]; then
             echo "::error::ReXGlue executable was not found."
             exit 1
           fi
           echo "REXGLUE_BIN=$REXGLUE_BIN" >> "$GITHUB_ENV"
-          echo "Using:"
-          echo "$REXGLUE_BIN"
+          echo "Using: $REXGLUE_BIN"
 
       - name: Test ReXGlue
         shell: bash
         run: |
           set -e
-          echo "Testing ReXGlue..."
           "$REXGLUE_BIN" --help
 
       - name: Prepare generated directory
@@ -103,52 +94,13 @@ jobs:
         run: |
           set -e
           mkdir -p generated
-          ls -la generated
 
       - name: ReXGlue Codegen
         shell: bash
         run: |
           set -o pipefail
-          echo "=============================================="
-          echo " BlackOps1-Recomp v0.1"
-          echo " ReXGlue 0.10.0 Code Generation"
-          echo "=============================================="
-          echo ""
-          echo "Project:"
-          cat blackops1_manifest.toml
-          echo ""
-          echo "XEX information:"
-          file game/default.xex
-          ls -lh game/default.xex
-          echo ""
-          echo "Starting ReXGlue..."
+          echo "Starting ReXGlue Codegen..."
           "$REXGLUE_BIN" codegen blackops1_manifest.toml --log_level info --log_file blackops1_codegen.log
-
-      - name: Show generated files
-        if: always()
-        shell: bash
-        run: |
-          echo "=============================================="
-          echo " Generated files"
-          echo "=============================================="
-          if [ -d "generated" ]; then
-            find generated -maxdepth 2 -type f -printf '%p\t%k KB\n' | sort
-          else
-            echo "generated/ does not exist."
-          fi
-
-      - name: Show codegen log
-        if: always()
-        shell: bash
-        run: |
-          echo "=============================================="
-          echo " ReXGlue codegen log"
-          echo "=============================================="
-          if [ -f "blackops1_codegen.log" ]; then
-            cat blackops1_codegen.log
-          else
-            echo "No codegen log was produced."
-          fi
 
       - name: Upload codegen results
         if: always()
