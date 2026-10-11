@@ -36,7 +36,6 @@ jobs:
       - name: Ensure ReXGlue SDK is cloned with submodules
         run: |
           set -e
-          # Remove a pasta anterior se veio do ZIP e clona via Git com submódulos
           rm -rf rexglue-sdk
           git clone --recursive --branch v0.10.0 https://github.com/rexglue/rexglue-sdk.git rexglue-sdk
 
@@ -66,7 +65,8 @@ jobs:
             -DCMAKE_CXX_STANDARD_REQUIRED=ON \
             -DCMAKE_CXX_EXTENSIONS=OFF \
             -DREXGLUE_ENABLE_TRACY=OFF \
-            -DREXGLUE_ENABLE_PERF_COUNTERS=OFF
+            -DREXGLUE_ENABLE_PERF_COUNTERS=OFF \
+            -DCMAKE_CXX_FLAGS="-msse3"
 
       - name: Build Project
         run: |
