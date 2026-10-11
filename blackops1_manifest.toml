@@ -1,9 +1,0 @@
-# BlackOps1-Recomp v0.1
-# ReXGlue 0.10.0
-#
-# This is intentionally minimal. The first milestone is code-generation
-# compatibility, not playability.
-
-project_name = "blackops1"
-file_path = "game/default.xex"
-out_directory_path = "generated"
