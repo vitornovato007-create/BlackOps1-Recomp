@@ -58,6 +58,7 @@ set_target_properties(rexruntime PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
 rex_target_pch(rexruntime
     <mutex>
     <unordered_map>
+    <expected>
     <rex/math.h>
     <rex/string.h>
     <rex/memory.h>
