@@ -1,13 +1,9 @@
+// Entrada principal do BlackOps1-Recomp.
+
+#include "generated/blackops1_init.h"
 #include "blackops1_app.h"
 
-namespace blackops1 {
-
-const char* project_name() {
-    return "BlackOps1-Recomp";
-}
-
-const char* project_version() {
-    return "0.1.0";
-}
-
-} // namespace blackops1
+// Registra a aplicação usando a classe BlackOps1App.
+// A classe precisa implementar o método Create conforme
+// a interface exigida pela versão instalada do ReXGlue.
+REX_DEFINE_APP(blackops1, BlackOps1App::Create)
