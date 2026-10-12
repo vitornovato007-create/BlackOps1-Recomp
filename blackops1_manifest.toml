@@ -1,6 +1,6 @@
 [project]
 name = "blackops1"
 
-[[modules]]
+[entrypoint]
 file_path = "game/default.xex"
 out_directory_path = "generated"
