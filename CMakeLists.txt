@@ -48,15 +48,16 @@ endif()
 
 # Gera o código C++ recompilado a partir do manifesto.
 
-# Execute com:
+# --force tenta continuar apesar de erros de validação.
 
-# cmake --build build --target blackops1_codegen
+# Isso não garante que todas as funções serão recompiladas corretamente.
 
 add_custom_target(blackops1_codegen
 COMMAND
 "$<TARGET_FILE:rexglue>"
 codegen
 "${BLACKOPS1_MANIFEST}"
+--force
 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
 DEPENDS rexglue
 COMMENT "Gerando código C++ do Black Ops 1 com ReXGlue..."
