@@ -26,8 +26,7 @@ else()
 endif()
 
 # Host target name used by the codegen-emitted dll_targets.cmake to colocate
-# guest DLLs with the host EXE. Defaults to PROJECT_NAME (which the
-# manifest-first init flow sets equal to the host target name).
+# guest DLLs with the host EXE.
 if(NOT DEFINED REXGLUE_HOST_TARGET)
     set(REXGLUE_HOST_TARGET ${PROJECT_NAME})
 endif()
@@ -35,8 +34,7 @@ endif()
 set(REXGLUE_RECOMP_DEBUG_INFO "line-tables-only" CACHE STRING
     "Debug info level for generated code: line-tables-only, full, or none")
 
-# Guest SEH scopes emit __try/__except, which traps hardware faults only under
-# asynchronous EH. clang++ spells that flag the GNU way.
+# Guest SEH scopes emit __try/__except.
 set(REXGLUE_RECOMP_OPTIONS "")
 if(WIN32)
     if(MSVC)
@@ -45,6 +43,7 @@ if(WIN32)
         list(APPEND REXGLUE_RECOMP_OPTIONS -fasync-exceptions)
     endif()
 endif()
+
 if(REXGLUE_RECOMP_DEBUG_INFO STREQUAL "none")
     list(APPEND REXGLUE_RECOMP_OPTIONS
         $<$<CXX_COMPILER_ID:Clang,AppleClang,GNU>:-g0>)
@@ -59,74 +58,78 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/generated/sources.cmake")
     set(REXGLUE_ENTRYPOINT_GENERATED_SOURCES ${GENERATED_SOURCES})
     set(REXGLUE_ENTRYPOINT_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/generated")
 
-    # Carried on the sources so they hold for whichever target compiles them.
     set_source_files_properties(${REXGLUE_ENTRYPOINT_GENERATED_SOURCES}
         PROPERTIES COMPILE_OPTIONS "${REXGLUE_RECOMP_OPTIONS}")
 endif()
 
-# The options go on the target as well: CMake compiles the header from its own
-# cmake_pch.hxx.cxx, which carries none of the source properties above, and
-# clang rejects a PCH whose EH mode disagrees with the TU including it.
+# Apply recompilation settings.
 function(rexglue_apply_recomp_settings target_name pch_header)
     target_precompile_headers(${target_name} PRIVATE "${pch_header}")
     target_compile_options(${target_name} PRIVATE ${REXGLUE_RECOMP_OPTIONS})
 endfunction()
 
-# Configure a rexglue target with SDK libraries and platform settings.
-# Call after add_executable() in your CMakeLists.txt.
-# Usage: rexglue_setup_target(<target> [GPU_PLUGINS xenos])
+# Configure a ReXGlue target with SDK libraries and platform settings.
 macro(rexglue_setup_target target_name)
     if(REXGLUE_ENTRYPOINT_GENERATED_SOURCES)
         add_library(${target_name}_recomp OBJECT
             ${REXGLUE_ENTRYPOINT_GENERATED_SOURCES})
+
         target_include_directories(${target_name}_recomp PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}
             ${CMAKE_CURRENT_SOURCE_DIR}/src
             ${REXGLUE_ENTRYPOINT_INCLUDE_DIR}
         )
+
         target_link_libraries(${target_name}_recomp PRIVATE rex::runtime)
         rexglue_apply_target_settings(${target_name}_recomp)
+
         rexglue_apply_recomp_settings(${target_name}_recomp
             "${REXGLUE_ENTRYPOINT_INCLUDE_DIR}/blackops1_pch.h")
+
         add_dependencies(${target_name}_recomp blackops1_codegen)
+
         target_link_libraries(${target_name} PRIVATE
             ${target_name}_recomp)
     endif()
-    # Also on the host, so a tree that has never run codegen still generates it.
+
     add_dependencies(${target_name} blackops1_codegen)
+
     target_include_directories(${target_name} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${REXGLUE_ENTRYPOINT_INCLUDE_DIR}
     )
+
     target_link_libraries(${target_name} PRIVATE rex::runtime)
+
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/metadata/icons")
         rexglue_embed_metadata(${target_name}
             DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/metadata/icons"
             PREFIX "icons")
     endif()
+
     rexglue_configure_target(${target_name} ${ARGN})
 endmacro()
 
-# Codegen runs as part of the build, re-running only when an input in codegen.d
-# changes. Build it alone with 'cmake --build . --target blackops1_codegen'.
-# Listing the sources as outputs orders any target that compiles them after
-# codegen, including one a project assembles itself rather than taking the
-# library rexglue_setup_target() builds. The stamp comes first: the DEPFILE
-# names it.
+# Codegen runs as part of the build.
+# --force allows generation to continue despite validation errors.
 add_custom_command(
     OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/generated/codegen.build.stamp"
            ${REXGLUE_ENTRYPOINT_GENERATED_SOURCES}
-    COMMAND $<TARGET_FILE:rex::rexglue> codegen ${CMAKE_CURRENT_SOURCE_DIR}/blackops1_manifest.toml
+    COMMAND $<TARGET_FILE:rex::rexglue>
+            codegen
+            ${CMAKE_CURRENT_SOURCE_DIR}/blackops1_manifest.toml
+            --force
     DEPFILE "${CMAKE_CURRENT_SOURCE_DIR}/generated/codegen.d"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Generating recompiled code for blackops1"
     VERBATIM
 )
+
 add_custom_target(blackops1_codegen
     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/generated/codegen.build.stamp")
 
-# Include DLL module shared library targets if codegen has generated them
+# Include DLL module shared library targets if generated.
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/generated/dll_targets.cmake")
     include(generated/dll_targets.cmake)
 endif()
