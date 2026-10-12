@@ -160,6 +160,14 @@ jobs:
         run: |
           set -euo pipefail
 
+          echo "===== LOCALIZANDO imgui.h ====="
+
+          if [ -d rexglue-sdk ]; then
+            find rexglue-sdk -type f -name imgui.h -print || true
+          fi
+
+          echo "===== COMPILANDO PROJETO ====="
+
           cmake --build build \
             --config Release \
             --parallel 2
@@ -190,11 +198,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "===== EXECUTANDO BLACKOPS1_CODEGEN ====="
+          echo "===== GERANDO CÓDIGO DO BLACK OPS 1 ====="
 
-          cmake --build build \
-            --target blackops1_codegen \
-            --parallel 2
+          ./rexglue-sdk/out/linux-amd64/rexglue \
+            codegen blackops1_manifest.toml --force
 
           echo "===== CONTEÚDO DE GENERATED ====="
 
@@ -209,11 +216,11 @@ jobs:
           if ! find generated -type f \
             ! -name '.gitkeep' \
             -print -quit | grep -q .; then
-            echo "::error::O alvo terminou sem gerar arquivos."
+            echo "::error::Nenhum arquivo foi gerado."
             exit 1
           fi
 
-          echo "Geração de código concluída com arquivos encontrados."
+          echo "Geração de código concluída."
 
       # 11. Inspeciona os resultados, mesmo se uma etapa falhar.
       - name: Inspecionar resultados
