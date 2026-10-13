@@ -3,6 +3,7 @@ package com.blackops1.recomp;
 import android.app.Activity;
 import android.os.Bundle;
 import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
 import android.graphics.Color;
 import android.widget.LinearLayout;
@@ -11,17 +12,25 @@ import android.widget.TextView;
 public class MainActivity extends Activity {
 
 
+static {
+    System.loadLibrary("blackops1_android");
+}
+
 private TextView statusText;
+
+private native String getNativeStatus();
 
 @Override
 protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
 
     getWindow().getDecorView().setSystemUiVisibility(
-            5894
-            | 1024
-            | 512
-            | 4096
+            View.SYSTEM_UI_FLAG_FULLSCREEN
+            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
     );
 
     LinearLayout layout = new LinearLayout(this);
@@ -37,20 +46,26 @@ protected void onCreate(Bundle savedInstanceState) {
     title.setGravity(Gravity.CENTER);
 
     TextView subtitle = new TextView(this);
-    subtitle.setText("Android ARM64");
+    subtitle.setText("ANDROID ARM64");
     subtitle.setTextColor(Color.rgb(100, 180, 255));
     subtitle.setTextSize(18);
     subtitle.setGravity(Gravity.CENTER);
+    subtitle.setPadding(0, 16, 0, 0);
 
     statusText = new TextView(this);
-    statusText.setText(
-            "Aplicativo iniciado.\n"
-            + "Aguardando integracao com o ReXGlue."
-    );
     statusText.setTextColor(Color.LTGRAY);
     statusText.setTextSize(16);
     statusText.setGravity(Gravity.CENTER);
     statusText.setPadding(0, 40, 0, 0);
+
+    try {
+        statusText.setText(getNativeStatus());
+    } catch (UnsatisfiedLinkError e) {
+        statusText.setText(
+                "Erro ao carregar a biblioteca C++.\n"
+                + "Verifique a compilacao nativa."
+        );
+    }
 
     layout.addView(title,
             new LinearLayout.LayoutParams(
@@ -68,6 +83,11 @@ protected void onCreate(Bundle savedInstanceState) {
                     ViewGroup.LayoutParams.WRAP_CONTENT));
 
     setContentView(layout);
+}
+
+@Override
+protected void onDestroy() {
+    super.onDestroy();
 }
 
 
