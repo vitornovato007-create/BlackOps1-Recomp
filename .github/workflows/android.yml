@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   prepare-android:
-    name: Build Android ARM64 APK
+    name: Inspect and Build Android ARM64
     runs-on: ubuntu-24.04
 
     steps:
@@ -51,33 +51,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          echo "Java:"
           java -version
-
-          echo "Python:"
           python --version
-
-          echo "Gradle:"
           gradle --version
-
-          echo "Android SDK:"
-          echo "$ANDROID_HOME"
-
-          echo "Pacotes Android instalados:"
+          echo "ANDROID_HOME=$ANDROID_HOME"
           sdkmanager --list_installed
-
-          echo "NDK:"
           ls "$ANDROID_HOME/ndk"
-
-          echo "CMake:"
           cmake --version
 
       - name: Verificar estrutura Android
         shell: bash
         run: |
           set -euo pipefail
-
           test -f android/settings.gradle
           test -f android/build.gradle
           test -f android/gradle.properties
@@ -85,70 +70,205 @@ jobs:
           test -f android/app/src/main/AndroidManifest.xml
           test -f android/app/src/main/cpp/CMakeLists.txt
           test -f android/app/src/main/cpp/native-lib.cpp
+          echo "Estrutura Android encontrada."
 
-          echo "Estrutura Android basica encontrada."
+      - name: Inspecionar codigo gerado
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p android-diagnostic
+
+          cat > /tmp/inspect_generated.py <<'PYTHON'
+          import re
+          from pathlib import Path
+
+          root = Path("generated")
+          report = Path("android-diagnostic/generated-inspection.txt")
+
+          lines = []
+          lines.append("INSPECAO DO CODIGO GERADO")
+          lines.append("=" * 60)
+          lines.append("Objetivo: diagnostico preliminar para integracao Android/ReXGlue.")
+          lines.append("Esta analise estatica nao substitui uma compilacao.")
+          lines.append("")
+
+          if not root.is_dir():
+              lines.append("ERRO: pasta generated/ nao encontrada.")
+              report.write_text("\n".join(lines), encoding="utf-8")
+              print(report.read_text(encoding="utf-8"))
+              raise SystemExit(0)
+
+          files = sorted(
+              p for p in root.rglob("*")
+              if p.is_file() and p.suffix in {".cpp", ".cc", ".c", ".h", ".hpp", ".cmake"}
+          )
+
+          lines.append(f"Arquivos C/C++/CMake encontrados: {len(files)}")
+          lines.append("")
+
+          all_text = {}
+          for path in files:
+              try:
+                  all_text[path] = path.read_text(
+                      encoding="utf-8", errors="replace"
+                  )
+              except OSError as exc:
+                  lines.append(f"ERRO DE LEITURA: {path}: {exc}")
+
+          lines.append("ARQUIVOS PRINCIPAIS")
+          for name in (
+              "blackops1_init.cpp",
+              "blackops1_register.cpp",
+              "sources.cmake",
+              "rexglue.cmake",
+              "blackops1_pch.h",
+              "blackops1_funcs.h",
+          ):
+              path = root / name
+              lines.append(f"{name}: {'PRESENTE' if path.is_file() else 'AUSENTE'}")
+
+          lines.append("")
+          lines.append("ARQUIVOS RECOMPILADOS")
+          recomp_files = sorted(
+              p for p in root.glob("blackops1_recomp.*.cpp")
+              if p.is_file()
+          )
+          lines.append(f"Quantidade publicada: {len(recomp_files)}")
+
+          for path in recomp_files:
+              lines.append(f"  {path.as_posix()}")
+
+          lines.append("")
+          lines.append("ARQUIVOS ESPERADOS POR sources.cmake")
+          sources_file = root / "sources.cmake"
+          expected = set()
+
+          if sources_file.is_file():
+              cmake_text = sources_file.read_text(
+                  encoding="utf-8", errors="replace"
+              )
+              for match in re.finditer(
+                  r'(?<![A-Za-z0-9_./-])'
+                  r'([A-Za-z0-9_./-]+\.(?:cpp|cc|c|h|hpp))',
+                  cmake_text
+              ):
+                  name = match.group(1)
+                  if "://" not in name:
+                      expected.add(name)
+
+              for name in sorted(expected):
+                  candidate = root / name
+                  if not candidate.is_file():
+                      lines.append(f"AUSENTE: {name}")
+
+              if not expected:
+                  lines.append(
+                      "Nenhum caminho de arquivo reconhecido automaticamente."
+                  )
+          else:
+              lines.append("sources.cmake nao encontrado.")
+
+          lines.append("")
+          lines.append("INCLUDES")
+          includes = set()
+
+          for path, text in all_text.items():
+              if path.suffix not in {".cpp", ".cc", ".c", ".h", ".hpp"}:
+                  continue
+
+              for match in re.finditer(
+                  r'^\s*#\s*include\s*[<"]([^>"]+)[>"]',
+                  text,
+                  re.MULTILINE
+              ):
+                  includes.add(match.group(1))
+
+          for item in sorted(includes):
+              lines.append(f"  {item}")
+
+          lines.append("")
+          lines.append("REFERENCIAS A RE XGLUE / RUNTIME")
+          patterns = [
+              re.compile(r"rex::[A-Za-z_][A-Za-z0-9_:]*"),
+              re.compile(r"\b(?:Initialize|Register|Setup)[A-Za-z_0-9]*\b"),
+              re.compile(r"\b(?:extern|XenonRuntime|Runtime)\b"),
+              re.compile(r"\b(?:entrypoint|entry_point|main)\b"),
+          ]
+
+          hits = 0
+          for path, text in all_text.items():
+              if path.suffix not in {".cpp", ".cc", ".c", ".h", ".hpp", ".cmake"}:
+                  continue
+
+              for number, line in enumerate(text.splitlines(), 1):
+                  stripped = line.strip()
+                  if not stripped or stripped.startswith("//"):
+                      continue
+
+                  if any(pattern.search(line) for pattern in patterns):
+                      lines.append(
+                          f"{path.as_posix()}:{number}: {stripped[:240]}"
+                      )
+                      hits += 1
+
+                      if hits >= 500:
+                          lines.append(
+                              "Limite de 500 ocorrencias atingido."
+                          )
+                          break
+
+              if hits >= 500:
+                  break
+
+          if hits == 0:
+              lines.append("Nenhuma referencia reconhecida automaticamente.")
+
+          lines.append("")
+          lines.append("RESUMO")
+          lines.append(f"Arquivos analisados: {len(all_text)}")
+          lines.append(f"Includes distintos: {len(includes)}")
+          lines.append(f"Arquivos esperados listados: {len(expected)}")
+          lines.append(
+              "A presenca dos arquivos nao comprova que o runtime "
+              "seja compativel com Android ARM64."
+          )
+
+          report.write_text("\n".join(lines) + "\n", encoding="utf-8")
+          print(report.read_text(encoding="utf-8"))
+          PYTHON
+
+          python /tmp/inspect_generated.py
 
       - name: Compilar APK ARM64
         shell: bash
         run: |
           set -euo pipefail
-
-          gradle \
-            -p android \
-            --no-daemon \
-            assembleDebug
+          gradle -p android --no-daemon assembleDebug
 
       - name: Verificar APK gerado
         shell: bash
         run: |
           set -euo pipefail
-
           APK="android/app/build/outputs/apk/debug/app-debug.apk"
-
           test -f "$APK"
-
-          echo "APK gerado:"
           ls -lh "$APK"
-
-          echo "Informacoes do arquivo:"
           file "$APK"
 
-      - name: Salvar diagnostico
+      - name: Salvar diagnostico do ambiente
         if: always()
         shell: bash
         run: |
           mkdir -p android-diagnostic
-
           {
             echo "Diagnostico do ambiente Android"
-            echo "Data UTC:"
             date -u
-
-            echo
-            echo "Java:"
             java -version 2>&1 || true
-
-            echo
-            echo "Python:"
             python --version 2>&1 || true
-
-            echo
-            echo "Gradle:"
             gradle --version 2>&1 || true
-
-            echo
             echo "ANDROID_HOME=${ANDROID_HOME:-nao definido}"
-
-            echo
-            echo "NDK:"
             ls "${ANDROID_HOME:-/nonexistent}/ndk" 2>&1 || true
-
-            echo
-            echo "CMake:"
             cmake --version 2>&1 || true
-
-            echo
-            echo "Arquivos APK encontrados:"
+            echo "APKs encontrados:"
             find android/app/build/outputs/apk \
               -type f -name "*.apk" -print 2>&1 || true
           } > android-diagnostic/environment.txt
