@@ -222,7 +222,46 @@ jobs:
 
           echo "Geração de código concluída."
 
-      # 11. Inspeciona os resultados, mesmo se uma etapa falhar.
+      # 11. NOVO: identifica formato, arquitetura e bibliotecas.
+      - name: Verificar formato do executável BlackOps1
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BIN="build/blackops1"
+
+          echo "===== VERIFICANDO EXECUTÁVEL ====="
+
+          if [ ! -f "$BIN" ]; then
+            echo "::error::build/blackops1 não foi encontrado."
+            echo "===== PROCURANDO EXECUTÁVEIS ====="
+            find build -type f -executable -print || true
+            exit 1
+          fi
+
+          ls -lh "$BIN"
+
+          echo ""
+          echo "===== TIPO DO ARQUIVO ====="
+          file "$BIN"
+
+          echo ""
+          echo "===== CABEÇALHO ELF E ARQUITETURA ====="
+          readelf -h "$BIN"
+
+          echo ""
+          echo "===== BIBLIOTECAS DINÂMICAS ====="
+          readelf -d "$BIN" | grep NEEDED || true
+
+          echo ""
+          echo "===== RESUMO DA ARQUITETURA ====="
+          readelf -h "$BIN" |
+            grep -E 'Class:|Data:|Type:|Machine:' || true
+
+          echo ""
+          echo "Verificação do executável concluída."
+
+      # 12. Inspeciona os resultados, mesmo se uma etapa falhar.
       - name: Inspecionar resultados
         if: always()
         shell: bash
@@ -253,7 +292,7 @@ jobs:
 
           echo "===== FIM DA INSPEÇÃO ====="
 
-      # 12. Salva os artefatos mesmo se uma etapa falhar.
+      # 13. Salva os artefatos mesmo se uma etapa falhar.
       - name: Salvar artefatos
         if: always()
         uses: actions/upload-artifact@v4
