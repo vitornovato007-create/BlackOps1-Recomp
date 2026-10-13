@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   prepare-android:
-    name: Prepare Android Build Environment
+    name: Build Android ARM64 APK
     runs-on: ubuntu-24.04
 
     steps:
@@ -25,6 +25,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
 
       - name: Configurar Android SDK
         uses: android-actions/setup-android@v4
@@ -46,16 +51,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           echo "Java:"
           java -version
+
           echo "Python:"
           python --version
+
+          echo "Gradle:"
+          gradle --version
+
           echo "Android SDK:"
           echo "$ANDROID_HOME"
+
           echo "Pacotes Android instalados:"
           sdkmanager --list_installed
+
           echo "NDK:"
           ls "$ANDROID_HOME/ndk"
+
           echo "CMake:"
           cmake --version
 
@@ -63,6 +77,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           test -f android/settings.gradle
           test -f android/build.gradle
           test -f android/gradle.properties
@@ -70,21 +85,72 @@ jobs:
           test -f android/app/src/main/AndroidManifest.xml
           test -f android/app/src/main/cpp/CMakeLists.txt
           test -f android/app/src/main/cpp/native-lib.cpp
+
           echo "Estrutura Android basica encontrada."
+
+      - name: Compilar APK ARM64
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gradle \
+            -p android \
+            --no-daemon \
+            assembleDebug
+
+      - name: Verificar APK gerado
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+
+          test -f "$APK"
+
+          echo "APK gerado:"
+          ls -lh "$APK"
+
+          echo "Informacoes do arquivo:"
+          file "$APK"
 
       - name: Salvar diagnostico
         if: always()
         shell: bash
         run: |
           mkdir -p android-diagnostic
+
           {
             echo "Diagnostico do ambiente Android"
+            echo "Data UTC:"
             date -u
-            java -version 2>&1
-            python --version 2>&1
-            echo "ANDROID_HOME=$ANDROID_HOME"
-            ls "$ANDROID_HOME/ndk" 2>&1 || true
+
+            echo
+            echo "Java:"
+            java -version 2>&1 || true
+
+            echo
+            echo "Python:"
+            python --version 2>&1 || true
+
+            echo
+            echo "Gradle:"
+            gradle --version 2>&1 || true
+
+            echo
+            echo "ANDROID_HOME=${ANDROID_HOME:-nao definido}"
+
+            echo
+            echo "NDK:"
+            ls "${ANDROID_HOME:-/nonexistent}/ndk" 2>&1 || true
+
+            echo
+            echo "CMake:"
             cmake --version 2>&1 || true
+
+            echo
+            echo "Arquivos APK encontrados:"
+            find android/app/build/outputs/apk \
+              -type f -name "*.apk" -print 2>&1 || true
           } > android-diagnostic/environment.txt
 
       - name: Publicar diagnostico
@@ -94,4 +160,13 @@ jobs:
           name: android-build-environment
           path: android-diagnostic/
           if-no-files-found: warn
+          retention-days: 7
+
+      - name: Publicar APK ARM64
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BlackOps1-Android-ARM64-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
           retention-days: 7
