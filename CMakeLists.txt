@@ -1,17 +1,17 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(blackops1 LANGUAGES C CXX)
+project(BlackOps1Recomp LANGUAGES C CXX)
 
-# Requisitos do projeto.
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Desativar recursos opcionais de profiling.
 set(REXGLUE_ENABLE_TRACY OFF CACHE BOOL "" FORCE)
 set(REXGLUE_ENABLE_PERF_COUNTERS OFF CACHE BOOL "" FORCE)
 
-# Caminhos do projeto.
+set(REXGLUE_SOURCE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/rexglue-sdk")
+
 set(BLACKOPS1_MANIFEST
     "${CMAKE_CURRENT_SOURCE_DIR}/blackops1_manifest.toml")
 
@@ -21,50 +21,65 @@ set(BLACKOPS1_XEX
 set(BLACKOPS1_GENERATED_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/generated")
 
-set(REXSDK_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/rexglue-sdk"
-    CACHE PATH "Caminho local do SDK ReXGlue")
-
-# Verificar arquivos e pastas necessários.
-if(NOT EXISTS "${REXSDK_DIR}/CMakeLists.txt")
+# Verificar arquivos necessários.
+if(NOT EXISTS "${REXGLUE_SOURCE_DIR}/CMakeLists.txt")
     message(FATAL_ERROR
-        "ReXGlue SDK nao encontrado: ${REXSDK_DIR}")
+        "ReXGlue SDK não encontrado: ${REXGLUE_SOURCE_DIR}")
 endif()
 
 if(NOT EXISTS "${BLACKOPS1_MANIFEST}")
     message(FATAL_ERROR
-        "Manifesto nao encontrado: ${BLACKOPS1_MANIFEST}")
+        "Manifesto não encontrado: ${BLACKOPS1_MANIFEST}")
 endif()
 
 if(NOT EXISTS "${BLACKOPS1_XEX}")
     message(FATAL_ERROR
-        "default.xex nao encontrado: ${BLACKOPS1_XEX}")
+        "Arquivo default.xex não encontrado: ${BLACKOPS1_XEX}")
 endif()
 
-if(NOT EXISTS "${BLACKOPS1_GENERATED_DIR}/blackops1_init.h")
-    message(STATUS
-        "Cabecalhos gerados ainda nao encontrados; "
-        "o ReXGlue tentara executar o codegen durante o build.")
+# Verificar o cabeçalho do ImGui.
+set(IMGUI_INCLUDE_DIR
+    "${REXGLUE_SOURCE_DIR}/thirdparty/imgui")
+
+if(NOT EXISTS "${IMGUI_INCLUDE_DIR}/imgui.h")
+    message(FATAL_ERROR
+        "imgui.h não encontrado em: ${IMGUI_INCLUDE_DIR}")
 endif()
 
-# Carregar a configuração oficial gerada pelo ReXGlue.
-# Ela carrega o SDK, configura o codegen e disponibiliza
-# rexglue_setup_target() e rexglue_apply_recomp_settings().
-include("${BLACKOPS1_GENERATED_DIR}/rexglue.cmake")
+# Carregar o SDK.
+add_subdirectory(rexglue-sdk)
 
-# Criar o executável principal.
-# IMPORTANTE: src/main.cpp precisa definir a entrada da aplicação
-# ReXGlue usando REX_DEFINE_APP.
+if(NOT TARGET rexglue)
+    message(FATAL_ERROR
+        "O SDK foi carregado, mas o alvo rexglue não existe.")
+endif()
+
+# Disponibilizar o ImGui para o alvo principal.
+# O diretório é aplicado depois da criação do alvo blackops1.
+# A integração do alvo é feita mais abaixo.
+
+# Integrar as regras geradas pelo ReXGlue.
+include(
+    "${BLACKOPS1_GENERATED_DIR}/rexglue.cmake"
+)
+
+# Executável principal.
 add_executable(blackops1
     src/main.cpp
 )
 
-# Integrar o executável ao runtime e ao código recompilado.
-# Esta função também configura as dependências de codegen.
+target_include_directories(blackops1 PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${BLACKOPS1_GENERATED_DIR}"
+    "${IMGUI_INCLUDE_DIR}"
+)
+
+# Integrar runtime, fontes recompiladas e configurações do ReXGlue.
 rexglue_setup_target(blackops1)
 
-message(STATUS "Projeto: blackops1")
+message(STATUS "Projeto BlackOps1Recomp configurado.")
 message(STATUS "Manifesto: ${BLACKOPS1_MANIFEST}")
 message(STATUS "XEX: ${BLACKOPS1_XEX}")
-message(STATUS "Codigo gerado: ${BLACKOPS1_GENERATED_DIR}")
-message(STATUS "Alvo executavel: blackops1")
+message(STATUS "ImGui: ${IMGUI_INCLUDE_DIR}")
+message(STATUS "Saída gerada: ${BLACKOPS1_GENERATED_DIR}")
