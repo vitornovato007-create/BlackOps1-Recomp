@@ -6,7 +6,8 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Biblioteca nativa utilizada pelo aplicativo Android.
+# Biblioteca nativa de diagnóstico do aplicativo Android.
+# Importante: esta biblioteca ainda NÃO integra o runtime completo do jogo.
 add_library(
     blackops1_android
     SHARED
@@ -23,7 +24,7 @@ target_compile_options(
 
 # Diretórios do projeto principal.
 set(BLACKOPS1_ROOT
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../../../.."
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../.."
 )
 
 set(BLACKOPS1_GENERATED_DIR
