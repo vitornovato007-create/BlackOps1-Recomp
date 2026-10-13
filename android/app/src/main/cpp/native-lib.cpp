@@ -7,12 +7,12 @@
 namespace {
     std::mutex runtime_mutex;
     std::atomic<bool> runtime_initialized{false};
-    std::string runtime_status = "Runtime nativo carregado";
+    std::string runtime_status = "Biblioteca JNI carregada; runtime do jogo ainda não integrado";
 }
 
 extern "C"
 JNIEXPORT jstring JNICALL
-Java_com_blackops1_recomp_MainActivity_nativeGetStatus(
+Java_com_blackops1_recomp_MainActivity_getNativeStatus(
         JNIEnv* env, jobject /* thiz */) {
     std::lock_guard<std::mutex> lock(runtime_mutex);
     return env->NewStringUTF(runtime_status.c_str());
