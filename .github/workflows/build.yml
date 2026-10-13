@@ -1,332 +1,363 @@
 name: Build BlackOps1-Recomp
 
 on:
-  workflow_dispatch:
+workflow_dispatch:
 
 permissions:
-  contents: read
+contents: read
 
 concurrency:
-  group: blackops1-recomp-build
-  cancel-in-progress: false
+group: blackops1-recomp-build
+cancel-in-progress: false
 
 jobs:
-  build:
-    name: Compilar ReXGlue e BlackOps1
-    runs-on: ubuntu-24.04
-    timeout-minutes: 120
+build:
+name: Compilar ReXGlue e BlackOps1
+runs-on: ubuntu-24.04
+timeout-minutes: 120
 
-    steps:
-      # 1. Baixa os arquivos do projeto.
-      - name: Checkout do projeto
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      # 2. Confere os arquivos necessários.
-      - name: Verificar arquivos
-        shell: bash
-        run: |
-          set -euo pipefail
+steps:
+  # 1. Baixa os arquivos do projeto.
+  - name: Checkout do projeto
+    uses: actions/checkout@v4
+    with:
+      fetch-depth: 0
 
-          test -f CMakeLists.txt
-          test -f blackops1_manifest.toml
-          test -f src/main.cpp
-          test -f generated/rexglue.cmake
-          test -f generated/sources.cmake
+  # 2. Confere os arquivos necessários.
+  - name: Verificar arquivos
+    shell: bash
+    run: |
+      set -euo pipefail
 
-          if [ ! -f game/default.xex ]; then
-            echo "::error::game/default.xex não encontrado."
-            exit 1
-          fi
+      test -f CMakeLists.txt
+      test -f blackops1_manifest.toml
+      test -f src/main.cpp
+      test -f generated/rexglue.cmake
+      test -f generated/sources.cmake
 
-          echo "===== MANIFESTO ====="
-          cat blackops1_manifest.toml
+      if [ ! -f game/default.xex ]; then
+        echo "::error::game/default.xex não encontrado."
+        exit 1
+      fi
 
-          echo "===== XEX ====="
-          ls -lh game/default.xex
-          sha256sum game/default.xex
+      echo "===== MANIFESTO ====="
+      cat blackops1_manifest.toml
 
-      # 3. Instala as dependências.
-      - name: Instalar dependências
-        shell: bash
-        run: |
-          set -euo pipefail
+      echo "===== XEX ====="
+      ls -lh game/default.xex
+      sha256sum game/default.xex
 
-          sudo apt-get update
+  # 3. Instala as dependências.
+  - name: Instalar dependências
+    shell: bash
+    run: |
+      set -euo pipefail
 
-          sudo apt-get install -y \
-            wget ca-certificates git cmake ninja-build \
-            build-essential python3 python3-pip python3-venv \
-            pkg-config libssl-dev libvulkan-dev libgtk-3-dev \
-            libasound2-dev libpulse-dev libjack-dev libsndio-dev \
-            libx11-dev libx11-xcb-dev libxext-dev libxrandr-dev \
-            libxcursor-dev libxfixes-dev libxi-dev libxss-dev \
-            libxtst-dev libxkbcommon-dev libdrm-dev libgbm-dev \
-            libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev \
-            libdbus-1-dev libibus-1.0-dev libudev-dev libthai-dev \
-            libusb-1.0-0-dev libpipewire-0.3-dev libwayland-dev \
-            libdecor-0-dev
+      sudo apt-get update
 
-          wget https://apt.llvm.org/llvm.sh -O /tmp/llvm.sh
-          chmod +x /tmp/llvm.sh
-          sudo bash /tmp/llvm.sh 20
-          sudo apt-get install -y clang-20
+      sudo apt-get install -y \
+        wget ca-certificates git cmake ninja-build \
+        build-essential python3 python3-pip python3-venv \
+        pkg-config libssl-dev libvulkan-dev libgtk-3-dev \
+        libasound2-dev libpulse-dev libjack-dev libsndio-dev \
+        libx11-dev libx11-xcb-dev libxext-dev libxrandr-dev \
+        libxcursor-dev libxfixes-dev libxi-dev libxss-dev \
+        libxtst-dev libxkbcommon-dev libdrm-dev libgbm-dev \
+        libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev \
+        libdbus-1-dev libibus-1.0-dev libudev-dev libthai-dev \
+        libusb-1.0-0-dev libpipewire-0.3-dev libwayland-dev \
+        libdecor-0-dev
 
-      # 4. Confirma as ferramentas.
-      - name: Verificar ferramentas
-        shell: bash
-        run: |
-          set -euo pipefail
+      wget https://apt.llvm.org/llvm.sh -O /tmp/llvm.sh
+      chmod +x /tmp/llvm.sh
+      sudo bash /tmp/llvm.sh 20
+      sudo apt-get install -y clang-20
 
-          clang-20 --version
-          clang++-20 --version
-          cmake --version
-          ninja --version
+  # 4. Confirma as ferramentas.
+  - name: Verificar ferramentas
+    shell: bash
+    run: |
+      set -euo pipefail
 
-      # 5. Baixa o SDK ReXGlue.
-      - name: Baixar ReXGlue SDK
-        shell: bash
-        run: |
-          set -euo pipefail
+      clang-20 --version
+      clang++-20 --version
+      cmake --version
+      ninja --version
 
-          rm -rf rexglue-sdk
+  # 5. Baixa o SDK ReXGlue.
+  - name: Baixar ReXGlue SDK
+    shell: bash
+    run: |
+      set -euo pipefail
 
-          git clone \
-            --recursive \
-            --branch v0.10.0 \
-            https://github.com/rexglue/rexglue-sdk.git \
-            rexglue-sdk
+      rm -rf rexglue-sdk
 
-          echo "===== VERSÃO DO SDK ====="
-          git -C rexglue-sdk describe --tags --always
+      git clone \
+        --recursive \
+        --branch v0.10.0 \
+        https://github.com/rexglue/rexglue-sdk.git \
+        rexglue-sdk
 
-      # 6. Testa o suporte C++23.
-      - name: Testar expected e unexpected
-        shell: bash
-        run: |
-          set -euo pipefail
+      echo "===== VERSÃO DO SDK ====="
+      git -C rexglue-sdk describe --tags --always
 
-          cat > /tmp/test_expected.cpp <<'CPP'
-          #include <expected>
-          #include <string>
+  # 6. Testa o suporte C++23.
+  - name: Testar expected e unexpected
+    shell: bash
+    run: |
+      set -euo pipefail
 
-          std::expected<int, std::string> testar(bool ok) {
-              if (ok) {
-                  return 42;
-              }
-              return std::unexpected(std::string("erro"));
+      cat > /tmp/test_expected.cpp <<'CPP'
+      #include <expected>
+      #include <string>
+
+      std::expected<int, std::string> testar(bool ok) {
+          if (ok) {
+              return 42;
           }
+          return std::unexpected(std::string("erro"));
+      }
 
-          int main() {
-              auto resultado = testar(true);
-              return resultado.value() == 42 ? 0 : 1;
-          }
-          CPP
+      int main() {
+          auto resultado = testar(true);
+          return resultado.value() == 42 ? 0 : 1;
+      }
+      CPP
 
-          clang++-20 \
-            -std=c++23 \
-            -stdlib=libstdc++ \
-            -fsyntax-only \
-            /tmp/test_expected.cpp
+      clang++-20 \
+        -std=c++23 \
+        -stdlib=libstdc++ \
+        -fsyntax-only \
+        /tmp/test_expected.cpp
 
-          echo "OK: expected e unexpected funcionam."
+      echo "OK: expected e unexpected funcionam."
 
-      # 7. Compila o SDK com suporte a SSSE3.
-      - name: Compilar ReXGlue SDK
-        shell: bash
-        run: |
-          set -euo pipefail
+  # 7. Compila o SDK com suporte a SSSE3.
+  - name: Compilar ReXGlue SDK
+    shell: bash
+    run: |
+      set -euo pipefail
 
-          export CC=clang-20
-          export CXX=clang++-20
+      export CC=clang-20
+      export CXX=clang++-20
 
-          cmake -S rexglue-sdk -B rexglue-sdk/out/linux-amd64 \
-            -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_COMPILER=clang-20 \
-            -DCMAKE_CXX_COMPILER=clang++-20 \
-            -DCMAKE_CXX_STANDARD=23 \
-            -DCMAKE_CXX_STANDARD_REQUIRED=ON \
-            -DCMAKE_CXX_EXTENSIONS=OFF \
-            -DCMAKE_CXX_FLAGS="-march=x86-64-v2" \
-            -DREXGLUE_ENABLE_TRACY=OFF \
-            -DREXGLUE_ENABLE_PERF_COUNTERS=OFF
+      cmake -S rexglue-sdk -B rexglue-sdk/out/linux-amd64 \
+        -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_C_COMPILER=clang-20 \
+        -DCMAKE_CXX_COMPILER=clang++-20 \
+        -DCMAKE_CXX_STANDARD=23 \
+        -DCMAKE_CXX_STANDARD_REQUIRED=ON \
+        -DCMAKE_CXX_EXTENSIONS=OFF \
+        -DCMAKE_CXX_FLAGS="-march=x86-64-v2" \
+        -DREXGLUE_ENABLE_TRACY=OFF \
+        -DREXGLUE_ENABLE_PERF_COUNTERS=OFF
 
-          cmake --build rexglue-sdk/out/linux-amd64 \
-            --config Release \
-            --parallel 2
+      cmake --build rexglue-sdk/out/linux-amd64 \
+        --config Release \
+        --parallel 2 \
+        --verbose
 
-          echo "===== EXECUTÁVEIS DO SDK ====="
+      echo "===== EXECUTÁVEIS DO SDK ====="
+      find rexglue-sdk/out/linux-amd64 \
+        -type f -executable -print || true
+
+  # 8. Localiza o executável ReXGlue.
+  - name: Localizar executável ReXGlue
+    shell: bash
+    run: |
+      set -euo pipefail
+
+      REXGLUE_BIN=""
+
+      for candidate in \
+        rexglue-sdk/out/linux-amd64/rexglue \
+        rexglue-sdk/out/linux-amd64/bin/rexglue \
+        rexglue-sdk/out/linux-amd64/tools/rexglue
+      do
+        if [ -x "$candidate" ]; then
+          REXGLUE_BIN="$candidate"
+          break
+        fi
+      done
+
+      if [ -z "$REXGLUE_BIN" ]; then
+        REXGLUE_BIN="$(
           find rexglue-sdk/out/linux-amd64 \
-            -type f -executable -print || true
+            -type f -name rexglue -executable \
+            -print -quit || true
+        )"
+      fi
 
-      # 8. Localiza o executável ReXGlue.
-      - name: Localizar executável ReXGlue
-        shell: bash
-        run: |
-          set -euo pipefail
+      if [ -z "$REXGLUE_BIN" ]; then
+        echo "::error::Executável ReXGlue não encontrado."
+        find rexglue-sdk -type f -name '*rexglue*' -print || true
+        exit 1
+      fi
 
-          REXGLUE_BIN=""
+      echo "REXGLUE_BIN=$REXGLUE_BIN" >> "$GITHUB_ENV"
 
-          for candidate in \
-            rexglue-sdk/out/linux-amd64/rexglue \
-            rexglue-sdk/out/linux-amd64/bin/rexglue \
-            rexglue-sdk/out/linux-amd64/tools/rexglue
-          do
-            if [ -x "$candidate" ]; then
-              REXGLUE_BIN="$candidate"
-              break
-            fi
-          done
+      echo "===== EXECUTÁVEL ENCONTRADO ====="
+      echo "$REXGLUE_BIN"
+      "$REXGLUE_BIN" --help
 
-          if [ -z "$REXGLUE_BIN" ]; then
-            REXGLUE_BIN="$(
-              find rexglue-sdk/out/linux-amd64 \
-                -type f -name rexglue -executable \
-                -print -quit || true
-            )"
-          fi
+  # 9. Gera o código do Black Ops 1.
+  - name: Gerar código BlackOps1
+    shell: bash
+    run: |
+      set -euo pipefail
 
-          if [ -z "$REXGLUE_BIN" ]; then
-            echo "::error::Executável ReXGlue não encontrado."
-            find rexglue-sdk -type f -name '*rexglue*' -print || true
-            exit 1
-          fi
+      echo "===== GERANDO CÓDIGO ====="
 
-          echo "REXGLUE_BIN=$REXGLUE_BIN" >> "$GITHUB_ENV"
+      "$REXGLUE_BIN" codegen \
+        blackops1_manifest.toml \
+        --force
 
-          echo "===== EXECUTÁVEL ENCONTRADO ====="
-          echo "$REXGLUE_BIN"
-          "$REXGLUE_BIN" --help
+      echo "===== ARQUIVOS GERADOS ====="
+      find generated -type f \
+        -printf '%p (%s bytes)\n' | sort
 
-      # 9. Gera o código do Black Ops 1.
-      - name: Gerar código BlackOps1
-        shell: bash
-        run: |
-          set -euo pipefail
+      for required in \
+        generated/blackops1_init.cpp \
+        generated/blackops1_register.cpp \
+        generated/sources.cmake \
+        generated/rexglue.cmake
+      do
+        if [ ! -f "$required" ]; then
+          echo "::error::Arquivo não encontrado: $required"
+          exit 1
+        fi
+      done
 
-          echo "===== GERANDO CÓDIGO ====="
+      echo "===== FONTES C++ ====="
+      find generated -maxdepth 1 -type f \
+        -name '*.cpp' -print | wc -l
 
-          "$REXGLUE_BIN" codegen \
-            blackops1_manifest.toml \
-            --force
+  # 10. Configura o projeto principal.
+  - name: Configure CMake do BlackOps1
+    shell: bash
+    run: |
+      set -euo pipefail
 
-          echo "===== ARQUIVOS GERADOS ====="
-          find generated -type f \
-            -printf '%p (%s bytes)\n' | sort
+      export CC=clang-20
+      export CXX=clang++-20
 
-          for required in \
-            generated/blackops1_init.cpp \
-            generated/blackops1_register.cpp \
-            generated/sources.cmake \
-            generated/rexglue.cmake
-          do
-            if [ ! -f "$required" ]; then
-              echo "::error::Arquivo não encontrado: $required"
-              exit 1
-            fi
-          done
+      rm -rf build
 
-          echo "===== FONTES C++ ====="
-          find generated -maxdepth 1 -type f \
-            -name '*.cpp' -print | wc -l
+      cmake -S . -B build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_C_COMPILER=clang-20 \
+        -DCMAKE_CXX_COMPILER=clang++-20 \
+        -DCMAKE_CXX_STANDARD=23 \
+        -DCMAKE_CXX_STANDARD_REQUIRED=ON \
+        -DCMAKE_CXX_EXTENSIONS=OFF \
+        -DREXGLUE_ENABLE_TRACY=OFF \
+        -DREXGLUE_ENABLE_PERF_COUNTERS=OFF \
+        -DREXSDK_DIR="${GITHUB_WORKSPACE}/rexglue-sdk" \
+        -DCMAKE_CXX_FLAGS="-march=x86-64-v2"
 
-      # 10. Configura o projeto principal.
-      - name: Configure CMake do BlackOps1
-        shell: bash
-        run: |
-          set -euo pipefail
+  # 11. Compila com log detalhado.
+  - name: Build BlackOps1 - log detalhado
+    shell: bash
+    run: |
+      set -uo pipefail
 
-          export CC=clang-20
-          export CXX=clang++-20
+      LOG_FILE="${RUNNER_TEMP}/blackops1-build.log"
 
-          rm -rf build
+      echo "===== INICIANDO BUILD DETALHADA ====="
+      echo "Log completo: ${LOG_FILE}"
 
-          cmake -S . -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_COMPILER=clang-20 \
-            -DCMAKE_CXX_COMPILER=clang++-20 \
-            -DCMAKE_CXX_STANDARD=23 \
-            -DCMAKE_CXX_STANDARD_REQUIRED=ON \
-            -DCMAKE_CXX_EXTENSIONS=OFF \
-            -DREXGLUE_ENABLE_TRACY=OFF \
-            -DREXGLUE_ENABLE_PERF_COUNTERS=OFF \
-            -DREXSDK_DIR="${GITHUB_WORKSPACE}/rexglue-sdk" \
-            -DCMAKE_CXX_FLAGS="-march=x86-64-v2"
+      set +e
+      cmake --build build \
+        --config Release \
+        --parallel 2 \
+        --verbose 2>&1 | tee "$LOG_FILE"
+      BUILD_STATUS=${PIPESTATUS[0]}
+      set -e
 
-      # 11. Compila o executável principal.
-      - name: Build BlackOps1
-        shell: bash
-        run: |
-          set -euo pipefail
+      echo "===== CÓDIGO DE SAÍDA: ${BUILD_STATUS} ====="
 
-          cmake --build build \
-            --config Release \
-            --parallel 2
+      if [ "$BUILD_STATUS" -ne 0 ]; then
+        echo "::error::A compilação falhou. Últimas 200 linhas do log:"
+        tail -n 200 "$LOG_FILE"
 
-          if [ ! -f build/blackops1 ]; then
-            echo "::error::build/blackops1 não foi encontrado."
-            find build -type f -executable -print || true
-            exit 1
-          fi
+        echo "===== LINHAS COM INDÍCIOS DE ERRO ====="
+        grep -n -i -E \
+          'error:|fatal error:|undefined reference|FAILED:|ninja: build stopped|validation failed|unresolved call' \
+          "$LOG_FILE" | tail -n 100 || true
 
-          echo "===== EXECUTÁVEL GERADO ====="
-          ls -lh build/blackops1
-          file build/blackops1
+        exit "$BUILD_STATUS"
+      fi
 
-      # 12. Verifica o formato do executável.
-      - name: Verificar executável Linux
-        shell: bash
-        run: |
-          set -euo pipefail
+      if [ ! -f build/blackops1 ]; then
+        echo "::error::Build terminou, mas build/blackops1 não foi encontrado."
+        find build -type f -executable -print || true
+        exit 1
+      fi
 
-          BIN="build/blackops1"
+      echo "===== EXECUTÁVEL GERADO ====="
+      ls -lh build/blackops1
+      file build/blackops1
 
-          echo "===== CABEÇALHO ELF ====="
-          readelf -h "$BIN"
+  # 12. Verifica o formato do executável.
+  - name: Verificar executável Linux
+    shell: bash
+    run: |
+      set -euo pipefail
 
-          echo "===== BIBLIOTECAS DINÂMICAS ====="
-          readelf -d "$BIN" | grep NEEDED || true
+      BIN="build/blackops1"
 
-          echo "===== ARQUITETURA ====="
-          readelf -h "$BIN" |
-            grep -E 'Class:|Data:|Type:|Machine:' || true
+      echo "===== CABEÇALHO ELF ====="
+      readelf -h "$BIN"
 
-      # 13. Inspeciona resultados mesmo se uma etapa falhar.
-      - name: Inspecionar resultados
-        if: always()
-        shell: bash
-        run: |
-          echo "===== ESTADO DO GIT ====="
-          git status --short || true
+      echo "===== BIBLIOTECAS DINÂMICAS ====="
+      readelf -d "$BIN" | grep NEEDED || true
 
-          echo "===== ARQUIVOS GERADOS ====="
-          find generated -type f \
-            -printf '%p (%s bytes)\n' 2>/dev/null || true
+      echo "===== ARQUITETURA ====="
+      readelf -h "$BIN" |
+        grep -E 'Class:|Data:|Type:|Machine:' || true
 
-          echo "===== EXECUTÁVEIS ====="
-          find build rexglue-sdk/out \
-            -type f -executable \
-            -printf '%p (%s bytes)\n' \
-            2>/dev/null | sort || true
+  # 13. Inspeciona resultados mesmo se uma etapa falhar.
+  - name: Inspecionar resultados
+    if: always()
+    shell: bash
+    run: |
+      echo "===== ESTADO DO GIT ====="
+      git status --short || true
 
-          echo "===== OBJETOS E BIBLIOTECAS ====="
-          find build rexglue-sdk/out \
-            -type f \
-            \( -name '*.o' -o -name '*.a' -o -name '*.so' \) \
-            -printf '%p (%s bytes)\n' \
-            2>/dev/null | head -200 || true
+      echo "===== ARQUIVOS GERADOS ====="
+      find generated -type f \
+        -printf '%p (%s bytes)\n' 2>/dev/null || true
 
-      # 14. Salva os artefatos mesmo em caso de falha.
-      - name: Salvar artefatos
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: blackops1-recomp-build
-          path: |
-            build/
-            generated/
-            rexglue-sdk/out/linux-amd64/
-          if-no-files-found: warn
-          retention-days: 7
+      echo "===== EXECUTÁVEIS ====="
+      find build rexglue-sdk/out \
+        -type f -executable \
+        -printf '%p (%s bytes)\n' \
+        2>/dev/null | sort || true
+
+      echo "===== OBJETOS E BIBLIOTECAS ====="
+      find build rexglue-sdk/out \
+        -type f \
+        \( -name '*.o' -o -name '*.a' -o -name '*.so' \) \
+        -printf '%p (%s bytes)\n' \
+        2>/dev/null | head -200 || true
+
+      echo "===== LOG DA BUILD ====="
+      if [ -f "${RUNNER_TEMP}/blackops1-build.log" ]; then
+        tail -n 200 "${RUNNER_TEMP}/blackops1-build.log"
+      fi
+
+  # 14. Salva os artefatos mesmo em caso de falha.
+  - name: Salvar artefatos
+    if: always()
+    uses: actions/upload-artifact@v4
+    with:
+      name: blackops1-recomp-build
+      path: |
+        build/
+        generated/
+        rexglue-sdk/out/linux-amd64/
+        ${{ runner.temp }}/blackops1-build.log
+      if-no-files-found: warn
+      retention-days: 7
