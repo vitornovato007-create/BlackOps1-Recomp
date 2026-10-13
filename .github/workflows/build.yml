@@ -47,7 +47,7 @@ jobs:
           ls -lh game/default.xex
           sha256sum game/default.xex
 
-      # 3. Instala as dependências usadas pelo SDK.
+      # 3. Instala as dependências.
       - name: Instalar dependências
         shell: bash
         run: |
@@ -84,7 +84,7 @@ jobs:
           cmake --version
           ninja --version
 
-      # 5. Baixa a versão fixada do SDK.
+      # 5. Baixa o SDK ReXGlue.
       - name: Baixar ReXGlue SDK
         shell: bash
         run: |
@@ -100,9 +100,6 @@ jobs:
 
           echo "===== VERSÃO DO SDK ====="
           git -C rexglue-sdk describe --tags --always
-
-          echo "===== CMAKE DO SDK ====="
-          test -f rexglue-sdk/CMakeLists.txt
 
       # 6. Testa o suporte C++23.
       - name: Testar expected e unexpected
@@ -135,7 +132,7 @@ jobs:
 
           echo "OK: expected e unexpected funcionam."
 
-      # 7. Compila primeiro o SDK, separadamente.
+      # 7. Compila o SDK com suporte a SSSE3.
       - name: Compilar ReXGlue SDK
         shell: bash
         run: |
@@ -152,6 +149,7 @@ jobs:
             -DCMAKE_CXX_STANDARD=23 \
             -DCMAKE_CXX_STANDARD_REQUIRED=ON \
             -DCMAKE_CXX_EXTENSIONS=OFF \
+            -DCMAKE_CXX_FLAGS="-march=x86-64-v2" \
             -DREXGLUE_ENABLE_TRACY=OFF \
             -DREXGLUE_ENABLE_PERF_COUNTERS=OFF
 
@@ -159,11 +157,11 @@ jobs:
             --config Release \
             --parallel 2
 
-          echo "===== EXECUTÁVEIS RE XGLUE ====="
+          echo "===== EXECUTÁVEIS DO SDK ====="
           find rexglue-sdk/out/linux-amd64 \
             -type f -executable -print || true
 
-      # 8. Localiza e testa o gerador.
+      # 8. Localiza o executável ReXGlue.
       - name: Localizar executável ReXGlue
         shell: bash
         run: |
@@ -183,36 +181,39 @@ jobs:
           done
 
           if [ -z "$REXGLUE_BIN" ]; then
-            REXGLUE_BIN="$(find rexglue-sdk/out/linux-amd64 \
-              -type f -name rexglue -executable -print -quit || true)"
+            REXGLUE_BIN="$(
+              find rexglue-sdk/out/linux-amd64 \
+                -type f -name rexglue -executable \
+                -print -quit || true
+            )"
           fi
 
           if [ -z "$REXGLUE_BIN" ]; then
-            echo "::error::O build do SDK não produziu um executável chamado rexglue."
+            echo "::error::Executável ReXGlue não encontrado."
             find rexglue-sdk -type f -name '*rexglue*' -print || true
             exit 1
           fi
 
           echo "REXGLUE_BIN=$REXGLUE_BIN" >> "$GITHUB_ENV"
 
-          echo "===== GERADOR ENCONTRADO ====="
+          echo "===== EXECUTÁVEL ENCONTRADO ====="
           echo "$REXGLUE_BIN"
           "$REXGLUE_BIN" --help
 
-      # 9. Gera o código antes de compilar o projeto principal.
+      # 9. Gera o código do Black Ops 1.
       - name: Gerar código BlackOps1
         shell: bash
         run: |
           set -euo pipefail
 
-          echo "===== EXECUTANDO CODEGEN ====="
+          echo "===== GERANDO CÓDIGO ====="
 
           "$REXGLUE_BIN" codegen \
             blackops1_manifest.toml \
             --force
 
           echo "===== ARQUIVOS GERADOS ====="
-          find generated -maxdepth 2 -type f \
+          find generated -type f \
             -printf '%p (%s bytes)\n' | sort
 
           for required in \
@@ -222,12 +223,12 @@ jobs:
             generated/rexglue.cmake
           do
             if [ ! -f "$required" ]; then
-              echo "::error::Arquivo esperado não encontrado: $required"
+              echo "::error::Arquivo não encontrado: $required"
               exit 1
             fi
           done
 
-          echo "===== CONTAGEM DE FONTES C++ ====="
+          echo "===== FONTES C++ ====="
           find generated -maxdepth 1 -type f \
             -name '*.cpp' -print | wc -l
 
@@ -254,7 +255,7 @@ jobs:
             -DREXSDK_DIR="${GITHUB_WORKSPACE}/rexglue-sdk" \
             -DCMAKE_CXX_FLAGS="-march=x86-64-v2"
 
-      # 11. Compila o executável Linux.
+      # 11. Compila o executável principal.
       - name: Build BlackOps1
         shell: bash
         run: |
@@ -265,8 +266,7 @@ jobs:
             --parallel 2
 
           if [ ! -f build/blackops1 ]; then
-            echo "::error::O executável build/blackops1 não foi encontrado."
-            echo "===== EXECUTÁVEIS PRODUZIDOS ====="
+            echo "::error::build/blackops1 não foi encontrado."
             find build -type f -executable -print || true
             exit 1
           fi
@@ -275,7 +275,7 @@ jobs:
           ls -lh build/blackops1
           file build/blackops1
 
-      # 12. Inspeciona formato e arquitetura.
+      # 12. Verifica o formato do executável.
       - name: Verificar executável Linux
         shell: bash
         run: |
@@ -293,7 +293,7 @@ jobs:
           readelf -h "$BIN" |
             grep -E 'Class:|Data:|Type:|Machine:' || true
 
-      # 13. Diagnóstico mesmo em caso de falha.
+      # 13. Inspeciona resultados mesmo se uma etapa falhar.
       - name: Inspecionar resultados
         if: always()
         shell: bash
@@ -302,10 +302,8 @@ jobs:
           git status --short || true
 
           echo "===== ARQUIVOS GERADOS ====="
-          if [ -d generated ]; then
-            find generated -type f \
-              -printf '%p (%s bytes)\n' | sort || true
-          fi
+          find generated -type f \
+            -printf '%p (%s bytes)\n' 2>/dev/null || true
 
           echo "===== EXECUTÁVEIS ====="
           find build rexglue-sdk/out \
@@ -320,9 +318,7 @@ jobs:
             -printf '%p (%s bytes)\n' \
             2>/dev/null | head -200 || true
 
-          echo "===== FIM DA INSPEÇÃO ====="
-
-      # 14. Salva os artefatos mesmo se alguma etapa falhar.
+      # 14. Salva os artefatos mesmo em caso de falha.
       - name: Salvar artefatos
         if: always()
         uses: actions/upload-artifact@v4
