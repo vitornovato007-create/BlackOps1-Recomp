@@ -2,15 +2,6 @@ name: Android ARM64 Build
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - "android/**"
-      - "tools/android/**"
-      - "src/**"
-      - "generated/**"
-      - "CMakeLists.txt"
-      - "blackops1_manifest.toml"
-      - ".github/workflows/android.yml"
 
 permissions:
   contents: read
@@ -35,11 +26,15 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Instalar Android SDK e NDK
-        uses: android-actions/setup-android@v3
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ""
 
-      - name: Instalar ferramentas Android
+      - name: Instalar componentes Android
+        shell: bash
         run: |
+          set -euo pipefail
           sdkmanager --install \
             "platform-tools" \
             "platforms;android-35" \
@@ -47,44 +42,49 @@ jobs:
             "ndk;28.2.13676358" \
             "cmake;3.31.6"
 
-      - name: Verificar ferramentas
+      - name: Verificar ferramentas instaladas
+        shell: bash
         run: |
+          set -euo pipefail
           echo "Java:"
           java -version
-
           echo "Python:"
           python --version
-
           echo "Android SDK:"
           echo "$ANDROID_HOME"
-
-          echo "Android NDK:"
+          echo "Pacotes Android instalados:"
+          sdkmanager --list_installed
+          echo "NDK:"
           ls "$ANDROID_HOME/ndk"
-
           echo "CMake:"
           cmake --version
 
       - name: Verificar estrutura Android
+        shell: bash
         run: |
-          if [ -d android ]; then
-            echo "Pasta android encontrada."
-          else
-            echo "Pasta android ainda nao existe."
-            echo "A etapa atual apenas prepara o ambiente."
-          fi
+          set -euo pipefail
+          test -f android/settings.gradle
+          test -f android/build.gradle
+          test -f android/gradle.properties
+          test -f android/app/build.gradle
+          test -f android/app/src/main/AndroidManifest.xml
+          test -f android/app/src/main/cpp/CMakeLists.txt
+          test -f android/app/src/main/cpp/native-lib.cpp
+          echo "Estrutura Android basica encontrada."
 
       - name: Salvar diagnostico
         if: always()
+        shell: bash
         run: |
           mkdir -p android-diagnostic
           {
             echo "Diagnostico do ambiente Android"
             date -u
             java -version 2>&1
-            python --version
-            cmake --version
+            python --version 2>&1
             echo "ANDROID_HOME=$ANDROID_HOME"
             ls "$ANDROID_HOME/ndk" 2>&1 || true
+            cmake --version 2>&1 || true
           } > android-diagnostic/environment.txt
 
       - name: Publicar diagnostico
