@@ -1,104 +1,49 @@
 
 #include <jni.h>
-#include <android/log.h>
-
-#include <exception>
-#include <new>
-
-#define LOG_TAG "BlackOps1Android"
-
-#define LOG_INFO(...) \
-    __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
-
-#define LOG_WARN(...) \
-    __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
-
-#define LOG_ERROR(...) \
-    __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+#include <atomic>
+#include <mutex>
+#include <string>
 
 namespace {
+    std::mutex runtime_mutex;
+    std::atomic<bool> runtime_initialized{false};
+    std::string runtime_status = "Runtime nativo carregado";
+}
 
-constexpr const char* STATUS_OK =
-        "Biblioteca nativa ARM64 carregada com sucesso.\n"
-        "JNI inicializado corretamente.\n"
-        "Runtime ReXGlue ainda nao foi integrado.";
-
-constexpr const char* STATUS_ERROR =
-        "A biblioteca nativa foi carregada, mas ocorreu um erro.";
-
-} // namespace
-
-extern "C" {
-
-/*
- * Retorna o estado atual da biblioteca nativa.
- *
- * Deve corresponder ao metodo declarado em MainActivity.java:
- * private native String getNativeStatus();
- */
+extern "C"
 JNIEXPORT jstring JNICALL
-Java_com_blackops1_recomp_MainActivity_getNativeStatus(
-        JNIEnv* env,
-        jobject /* thiz */) {
-
-    if (env == nullptr) {
-        LOG_ERROR("JNIEnv nulo em getNativeStatus.");
-        return nullptr;
-    }
-
-    LOG_INFO("Consulta do estado da biblioteca nativa.");
-
-    return env->NewStringUTF(STATUS_OK);
+Java_com_blackops1_recomp_MainActivity_nativeGetStatus(
+        JNIEnv* env, jobject /* thiz */) {
+    std::lock_guard<std::mutex> lock(runtime_mutex);
+    return env->NewStringUTF(runtime_status.c_str());
 }
 
-/*
- * Verifica se a biblioteca nativa consegue responder
- * a uma chamada JNI.
- *
- * Retorna true se a chamada chegar corretamente.
- */
+extern "C"
 JNIEXPORT jboolean JNICALL
-Java_com_blackops1_recomp_MainActivity_nativeSelfTest(
-        JNIEnv* env,
-        jobject /* thiz */) {
+Java_com_blackops1_recomp_MainActivity_nativeInitialize(
+        JNIEnv* env, jobject /* thiz */) {
+    std::lock_guard<std::mutex> lock(runtime_mutex);
 
-    if (env == nullptr) {
-        LOG_ERROR("JNIEnv nulo no teste nativo.");
-        return JNI_FALSE;
+    if (runtime_initialized.load()) {
+        runtime_status = "Runtime já inicializado";
+        return JNI_TRUE;
     }
 
-    LOG_INFO("Teste JNI executado com sucesso.");
+    // A inicialização real do ReXGlue entra aqui.
+    // Não declare o jogo iniciado antes de conectar
+    // as funções geradas e as dependências do SDK.
+    runtime_status =
+        "Biblioteca carregada; integração do ReXGlue pendente";
 
-    return JNI_TRUE;
+    return JNI_FALSE;
 }
 
-/*
- * Chamado automaticamente pela JVM/Android quando
- * a biblioteca e carregada por System.loadLibrary().
- */
-JNIEXPORT jint JNICALL
-JNI_OnLoad(JavaVM* vm, void* /* reserved */) {
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_blackops1_recomp_MainActivity_nativeShutdown(
+        JNIEnv* /* env */, jobject /* thiz */) {
+    std::lock_guard<std::mutex> lock(runtime_mutex);
 
-    if (vm == nullptr) {
-        LOG_ERROR("JavaVM nulo durante JNI_OnLoad.");
-        return JNI_ERR;
-    }
-
-    JNIEnv* env = nullptr;
-
-    const jint result = vm->GetEnv(
-            reinterpret_cast<void**>(&env),
-            JNI_VERSION_1_6
-    );
-
-    if (result != JNI_OK || env == nullptr) {
-        LOG_ERROR("Falha ao inicializar JNI.");
-        return JNI_ERR;
-    }
-
-    LOG_INFO("Biblioteca BlackOps1Android inicializada.");
-
-    return JNI_VERSION_1_6;
+    runtime_initialized.store(false);
+    runtime_status = "Runtime encerrado";
 }
-
-} // extern "C"
