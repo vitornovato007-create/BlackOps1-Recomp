@@ -1,49 +1,34 @@
-
 #include <jni.h>
+#include <android/log.h>
 #include <atomic>
 #include <mutex>
 #include <string>
 
+#define TAG "BlackOps1Android"
+
 namespace {
-    std::mutex runtime_mutex;
-    std::atomic<bool> runtime_initialized{false};
-    std::string runtime_status = "Biblioteca JNI carregada; runtime do jogo ainda não integrado";
+std::mutex status_mutex;
+std::string status =
+    "Biblioteca nativa carregada. O runtime SDL/ReXGlue inicia pelo ponto de entrada nativo; "
+    "esta mensagem so confirma o carregamento da biblioteca.";
 }
 
-extern "C"
-JNIEXPORT jstring JNICALL
-Java_com_blackops1_recomp_MainActivity_getNativeStatus(
-        JNIEnv* env, jobject /* thiz */) {
-    std::lock_guard<std::mutex> lock(runtime_mutex);
-    return env->NewStringUTF(runtime_status.c_str());
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_blackops1_recomp_MainActivity_getNativeStatus(JNIEnv* env, jobject) {
+    std::lock_guard<std::mutex> lock(status_mutex);
+    return env->NewStringUTF(status.c_str());
 }
 
-extern "C"
-JNIEXPORT jboolean JNICALL
-Java_com_blackops1_recomp_MainActivity_nativeInitialize(
-        JNIEnv* env, jobject /* thiz */) {
-    std::lock_guard<std::mutex> lock(runtime_mutex);
-
-    if (runtime_initialized.load()) {
-        runtime_status = "Runtime já inicializado";
-        return JNI_TRUE;
+extern "C" JNIEXPORT void JNICALL
+Java_com_blackops1_recomp_MainActivity_nativeSetRuntimeStatus(JNIEnv* env, jobject,
+                                                               jstring message) {
+    if (!message) return;
+    const char* chars = env->GetStringUTFChars(message, nullptr);
+    if (!chars) return;
+    {
+        std::lock_guard<std::mutex> lock(status_mutex);
+        status.assign(chars);
     }
-
-    // A inicialização real do ReXGlue entra aqui.
-    // Não declare o jogo iniciado antes de conectar
-    // as funções geradas e as dependências do SDK.
-    runtime_status =
-        "Biblioteca carregada; integração do ReXGlue pendente";
-
-    return JNI_FALSE;
-}
-
-extern "C"
-JNIEXPORT void JNICALL
-Java_com_blackops1_recomp_MainActivity_nativeShutdown(
-        JNIEnv* /* env */, jobject /* thiz */) {
-    std::lock_guard<std::mutex> lock(runtime_mutex);
-
-    runtime_initialized.store(false);
-    runtime_status = "Runtime encerrado";
+    __android_log_print(ANDROID_LOG_INFO, TAG, "%s", chars);
+    env->ReleaseStringUTFChars(message, chars);
 }
