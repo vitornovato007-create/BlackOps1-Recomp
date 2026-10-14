@@ -1,7 +1,7 @@
 name: BlackOps1 Android ARM64
 on:
   workflow_dispatch:
-  push:
+  
     paths:
       - 'android/**'
       - 'generated/**'
