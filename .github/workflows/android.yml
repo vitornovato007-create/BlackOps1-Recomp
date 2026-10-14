@@ -1,47 +1,59 @@
 name: BlackOps1 Android ARM64
+
 on:
   workflow_dispatch:
-  
-    paths:
-      - 'android/**'
-      - 'generated/**'
-      - 'src/**'
-      - 'rexglue-sdk/**'
-      - 'tools/android/**'
-      - '.github/workflows/android.yml'
+
 permissions:
   contents: read
+
 jobs:
   build-android-arm64:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
+
     steps:
       - name: Checkout project
         uses: actions/checkout@v4
+
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+
       - name: Install Android build tools
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;28.2.13676358" "cmake;3.31.6"
+        run: |
+          sdkmanager "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;28.2.13676358" \
+            "cmake;3.31.6"
+
       - name: Bootstrap SDK submodules
         run: python3 tools/android/bootstrap_sdk.py
+
       - name: Apply Android ARM64 SDK adaptations
         run: python3 tools/android/preparar_sdk.py
+
       - name: Check Python scripts
         run: python3 -m py_compile tools/android/*.py
+
       - name: Audit integration layout
         run: python3 tools/android/auditar_integracao.py
+
       - name: Build APK
         working-directory: android
         run: gradle --no-daemon --stacktrace assembleDebug
+
       - name: Upload APK for private testing
         uses: actions/upload-artifact@v4
         with:
