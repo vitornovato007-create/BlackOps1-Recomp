@@ -107,6 +107,7 @@ target_include_directories(blackops1 PRIVATE
     "${BLACKOPS1_ROOT}"
     "${BLACKOPS1_ROOT}/src"
     "${BLACKOPS1_GENERATED_DIR}"
+    "${BLACKOPS1_GENERATED_DIR}/headers"
     "${IMGUI_INCLUDE_DIR}"
 )
 
