@@ -15,6 +15,53 @@ jobs:
     steps:
       - name: Baixar repositorio
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Inicializar submodulos do ReXGlue
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ ! -d "rexglue-sdk" ]; then
+            echo "::error::A pasta rexglue-sdk nao foi encontrada."
+            exit 1
+          fi
+
+          if [ ! -e "rexglue-sdk/.git" ]; then
+            echo "::error::rexglue-sdk nao e um checkout Git. O SDK precisa ser baixado como repositorio Git para inicializar seus submodulos."
+            exit 1
+          fi
+
+          git -C rexglue-sdk submodule sync --recursive
+          git -C rexglue-sdk submodule update --init --recursive
+
+          echo "Verificando submodulos obrigatorios..."
+
+          for path in \
+            cli11 \
+            libmspack \
+            FFmpeg \
+            tomlplusplus \
+            simde \
+            xxHash \
+            spdlog \
+            fmt \
+            utfcpp \
+            imgui \
+            sdl3
+          do
+            if [ ! -d "rexglue-sdk/thirdparty/$path" ]; then
+              echo "::error::Submodulo ausente: rexglue-sdk/thirdparty/$path"
+              exit 1
+            fi
+          done
+
+          test -f rexglue-sdk/thirdparty/cli11/CMakeLists.txt
+          test -f rexglue-sdk/thirdparty/sdl3/CMakeLists.txt
+
+          git -C rexglue-sdk submodule status --recursive
 
       - name: Preparar SDL3 para o ReXGlue
         shell: bash
@@ -24,21 +71,14 @@ jobs:
           SDL_DIR="rexglue-sdk/thirdparty/sdl3"
 
           if [ ! -f "$SDL_DIR/CMakeLists.txt" ]; then
-            rm -rf "$SDL_DIR"
-            mkdir -p "rexglue-sdk/thirdparty"
-
-            git clone \
-              --depth 1 \
-              --branch release-3.4.x \
-              https://github.com/libsdl-org/SDL.git \
-              "$SDL_DIR"
+            echo "::error::SDL3 nao foi inicializado como submodulo. Verifique a configuracao do ReXGlue."
+            exit 1
           fi
 
-          test -f "$SDL_DIR/CMakeLists.txt"
           test -d "$SDL_DIR/include/SDL3"
 
           echo "SDL3 preparado com sucesso."
-          git -C "$SDL_DIR" log -1 --oneline
+          git -C "$SDL_DIR" log -1 --oneline || true
 
       - name: Instalar Java
         uses: actions/setup-java@v4
@@ -101,8 +141,10 @@ jobs:
           test -f android/app/src/main/AndroidManifest.xml
           test -f android/app/src/main/cpp/CMakeLists.txt
           test -f android/app/src/main/cpp/native-lib.cpp
+          test -f android/app/src/main/cpp/NativeXisoBridge.cpp
+          test -f thirdparty/extract-xiso/extract-xiso.c
 
-          echo "Estrutura Android encontrada."
+          echo "Estrutura Android e fonte XISO encontrados."
 
       - name: Inspecionar codigo gerado
         shell: bash
@@ -118,16 +160,13 @@ jobs:
           root = Path("generated")
           report = Path("android-diagnostic/generated-inspection.txt")
 
-          lines = []
-          lines.append("INSPECAO DO CODIGO GERADO")
-          lines.append("=" * 60)
-          lines.append(
-              "Objetivo: diagnostico preliminar para integracao Android/ReXGlue."
-          )
-          lines.append(
-              "Esta analise estatica nao substitui uma compilacao."
-          )
-          lines.append("")
+          lines = [
+              "INSPECAO DO CODIGO GERADO",
+              "=" * 60,
+              "Diagnostico preliminar para integracao Android/ReXGlue.",
+              "Esta analise estatica nao substitui uma compilacao.",
+              "",
+          ]
 
           if not root.is_dir():
               lines.append("ERRO: pasta generated/ nao encontrada.")
@@ -135,12 +174,13 @@ jobs:
               print(report.read_text(encoding="utf-8"))
               raise SystemExit(0)
 
+          extensions = {
+              ".cpp", ".cc", ".c", ".h", ".hpp", ".cmake"
+          }
+
           files = sorted(
               p for p in root.rglob("*")
-              if p.is_file()
-              and p.suffix in {
-                  ".cpp", ".cc", ".c", ".h", ".hpp", ".cmake"
-              }
+              if p.is_file() and p.suffix in extensions
           )
 
           lines.append(f"Arquivos C/C++/CMake encontrados: {len(files)}")
@@ -152,7 +192,7 @@ jobs:
               try:
                   all_text[path] = path.read_text(
                       encoding="utf-8",
-                      errors="replace"
+                      errors="replace",
                   )
               except OSError as exc:
                   lines.append(f"ERRO DE LEITURA: {path}: {exc}")
@@ -168,12 +208,10 @@ jobs:
               "blackops1_funcs.h",
           ):
               path = root / name
-              lines.append(
-                  f"{name}: {'PRESENTE' if path.is_file() else 'AUSENTE'}"
-              )
+              status = "PRESENTE" if path.is_file() else "AUSENTE"
+              lines.append(f"{name}: {status}")
 
-          lines.append("")
-          lines.append("ARQUIVOS RECOMPILADOS")
+          lines.extend(["", "ARQUIVOS RECOMPILADOS"])
 
           recomp_files = sorted(
               p for p in root.glob("blackops1_recomp.*.cpp")
@@ -185,8 +223,7 @@ jobs:
           for path in recomp_files:
               lines.append(f"  {path.as_posix()}")
 
-          lines.append("")
-          lines.append("ARQUIVOS ESPERADOS POR sources.cmake")
+          lines.extend(["", "ARQUIVOS ESPERADOS POR sources.cmake"])
 
           sources_file = root / "sources.cmake"
           expected = set()
@@ -194,23 +231,21 @@ jobs:
           if sources_file.is_file():
               cmake_text = sources_file.read_text(
                   encoding="utf-8",
-                  errors="replace"
+                  errors="replace",
               )
 
-              for match in re.finditer(
+              pattern = (
                   r'(?<![A-Za-z0-9_./-])'
-                  r'([A-Za-z0-9_./-]+\.(?:cpp|cc|c|h|hpp))',
-                  cmake_text
-              ):
-                  name = match.group(1)
+                  r'([A-Za-z0-9_./-]+\.(?:cpp|cc|c|h|hpp))'
+              )
 
+              for match in re.finditer(pattern, cmake_text):
+                  name = match.group(1)
                   if "://" not in name:
                       expected.add(name)
 
               for name in sorted(expected):
-                  candidate = root / name
-
-                  if not candidate.is_file():
+                  if not (root / name).is_file():
                       lines.append(f"AUSENTE: {name}")
 
               if not expected:
@@ -220,8 +255,7 @@ jobs:
           else:
               lines.append("sources.cmake nao encontrado.")
 
-          lines.append("")
-          lines.append("INCLUDES")
+          lines.extend(["", "INCLUDES"])
 
           includes = set()
 
@@ -229,18 +263,15 @@ jobs:
               if path.suffix not in {".cpp", ".cc", ".c", ".h", ".hpp"}:
                   continue
 
-              for match in re.finditer(
-                  r'^\s*#\s*include\s*[<"]([^>"]+)[>"]',
-                  text,
-                  re.MULTILINE
-              ):
+              pattern = r'^\s*#\s*include\s*[<"]([^>"]+)[>"]'
+
+              for match in re.finditer(pattern, text, re.MULTILINE):
                   includes.add(match.group(1))
 
           for item in sorted(includes):
               lines.append(f"  {item}")
 
-          lines.append("")
-          lines.append("REFERENCIAS A RE XGLUE / RUNTIME")
+          lines.extend(["", "REFERENCIAS A RE XGLUE / RUNTIME"])
 
           patterns = [
               re.compile(r"rex::[A-Za-z_][A-Za-z0-9_:]*"),
@@ -252,9 +283,7 @@ jobs:
           hits = 0
 
           for path, text in all_text.items():
-              if path.suffix not in {
-                  ".cpp", ".cc", ".c", ".h", ".hpp", ".cmake"
-              }:
+              if path.suffix not in extensions:
                   continue
 
               for number, line in enumerate(text.splitlines(), 1):
@@ -281,19 +310,21 @@ jobs:
           if hits == 0:
               lines.append("Nenhuma referencia reconhecida automaticamente.")
 
-          lines.append("")
-          lines.append("RESUMO")
-          lines.append(f"Arquivos analisados: {len(all_text)}")
-          lines.append(f"Includes distintos: {len(includes)}")
-          lines.append(f"Arquivos esperados listados: {len(expected)}")
-          lines.append(
-              "A presenca dos arquivos nao comprova que o runtime "
-              "seja compativel com Android ARM64."
-          )
+          lines.extend([
+              "",
+              "RESUMO",
+              f"Arquivos analisados: {len(all_text)}",
+              f"Includes distintos: {len(includes)}",
+              f"Arquivos esperados listados: {len(expected)}",
+              (
+                  "A presenca dos arquivos nao comprova que o runtime "
+                  "seja compativel com Android ARM64."
+              ),
+          ])
 
           report.write_text(
               "\n".join(lines) + "\n",
-              encoding="utf-8"
+              encoding="utf-8",
           )
 
           print(report.read_text(encoding="utf-8"))
@@ -337,11 +368,12 @@ jobs:
             ls "${ANDROID_HOME:-/nonexistent}/ndk" 2>&1 || true
             cmake --version 2>&1 || true
 
-            echo "APKs encontrados:"
+            echo "Status dos submodulos ReXGlue:"
+            git -C rexglue-sdk submodule status --recursive 2>&1 || true
 
+            echo "APKs encontrados:"
             find android/app/build/outputs/apk \
               -type f -name "*.apk" -print 2>&1 || true
-
           } > android-diagnostic/environment.txt
 
       - name: Publicar diagnostico
