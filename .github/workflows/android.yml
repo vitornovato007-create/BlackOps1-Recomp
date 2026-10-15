@@ -10,10 +10,36 @@ jobs:
   prepare-android:
     name: Inspect and Build Android ARM64
     runs-on: ubuntu-24.04
+    timeout-minutes: 180
 
     steps:
       - name: Baixar repositorio
         uses: actions/checkout@v4
+
+      # Preparar SDL3 oficial para o ReXGlue
+      - name: Preparar SDL3 para o ReXGlue
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SDL_DIR="rexglue-sdk/thirdparty/sdl3"
+
+          if [ ! -f "$SDL_DIR/CMakeLists.txt" ]; then
+            rm -rf "$SDL_DIR"
+            mkdir -p "rexglue-sdk/thirdparty"
+
+            git clone \
+              --depth 1 \
+              --branch release-3.4.x \
+              https://github.com/libsdl-org/SDL.git \
+              "$SDL_DIR"
+          fi
+
+          test -f "$SDL_DIR/CMakeLists.txt"
+          test -d "$SDL_DIR/include/SDL3"
+
+          echo "SDL3 preparado com sucesso."
+          git -C "$SDL_DIR" log -1 --oneline
 
       - name: Instalar Java
         uses: actions/setup-java@v4
@@ -40,6 +66,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           sdkmanager --install \
             "platform-tools" \
             "platforms;android-35" \
@@ -51,10 +78,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           java -version
           python --version
           gradle --version
+
           echo "ANDROID_HOME=$ANDROID_HOME"
+
           sdkmanager --list_installed
           ls "$ANDROID_HOME/ndk"
           cmake --version
@@ -63,6 +93,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           test -f android/settings.gradle
           test -f android/build.gradle
           test -f android/gradle.properties
@@ -70,12 +101,14 @@ jobs:
           test -f android/app/src/main/AndroidManifest.xml
           test -f android/app/src/main/cpp/CMakeLists.txt
           test -f android/app/src/main/cpp/native-lib.cpp
+
           echo "Estrutura Android encontrada."
 
       - name: Inspecionar codigo gerado
         shell: bash
         run: |
           set -euo pipefail
+
           mkdir -p android-diagnostic
 
           cat > /tmp/inspect_generated.py <<'PYTHON'
@@ -88,8 +121,12 @@ jobs:
           lines = []
           lines.append("INSPECAO DO CODIGO GERADO")
           lines.append("=" * 60)
-          lines.append("Objetivo: diagnostico preliminar para integracao Android/ReXGlue.")
-          lines.append("Esta analise estatica nao substitui uma compilacao.")
+          lines.append(
+              "Objetivo: diagnostico preliminar para integracao Android/ReXGlue."
+          )
+          lines.append(
+              "Esta analise estatica nao substitui uma compilacao."
+          )
           lines.append("")
 
           if not root.is_dir():
@@ -100,22 +137,28 @@ jobs:
 
           files = sorted(
               p for p in root.rglob("*")
-              if p.is_file() and p.suffix in {".cpp", ".cc", ".c", ".h", ".hpp", ".cmake"}
+              if p.is_file()
+              and p.suffix in {
+                  ".cpp", ".cc", ".c", ".h", ".hpp", ".cmake"
+              }
           )
 
           lines.append(f"Arquivos C/C++/CMake encontrados: {len(files)}")
           lines.append("")
 
           all_text = {}
+
           for path in files:
               try:
                   all_text[path] = path.read_text(
-                      encoding="utf-8", errors="replace"
+                      encoding="utf-8",
+                      errors="replace"
                   )
               except OSError as exc:
                   lines.append(f"ERRO DE LEITURA: {path}: {exc}")
 
           lines.append("ARQUIVOS PRINCIPAIS")
+
           for name in (
               "blackops1_init.cpp",
               "blackops1_register.cpp",
@@ -125,14 +168,18 @@ jobs:
               "blackops1_funcs.h",
           ):
               path = root / name
-              lines.append(f"{name}: {'PRESENTE' if path.is_file() else 'AUSENTE'}")
+              lines.append(
+                  f"{name}: {'PRESENTE' if path.is_file() else 'AUSENTE'}"
+              )
 
           lines.append("")
           lines.append("ARQUIVOS RECOMPILADOS")
+
           recomp_files = sorted(
               p for p in root.glob("blackops1_recomp.*.cpp")
               if p.is_file()
           )
+
           lines.append(f"Quantidade publicada: {len(recomp_files)}")
 
           for path in recomp_files:
@@ -140,24 +187,29 @@ jobs:
 
           lines.append("")
           lines.append("ARQUIVOS ESPERADOS POR sources.cmake")
+
           sources_file = root / "sources.cmake"
           expected = set()
 
           if sources_file.is_file():
               cmake_text = sources_file.read_text(
-                  encoding="utf-8", errors="replace"
+                  encoding="utf-8",
+                  errors="replace"
               )
+
               for match in re.finditer(
                   r'(?<![A-Za-z0-9_./-])'
                   r'([A-Za-z0-9_./-]+\.(?:cpp|cc|c|h|hpp))',
                   cmake_text
               ):
                   name = match.group(1)
+
                   if "://" not in name:
                       expected.add(name)
 
               for name in sorted(expected):
                   candidate = root / name
+
                   if not candidate.is_file():
                       lines.append(f"AUSENTE: {name}")
 
@@ -170,6 +222,7 @@ jobs:
 
           lines.append("")
           lines.append("INCLUDES")
+
           includes = set()
 
           for path, text in all_text.items():
@@ -188,6 +241,7 @@ jobs:
 
           lines.append("")
           lines.append("REFERENCIAS A RE XGLUE / RUNTIME")
+
           patterns = [
               re.compile(r"rex::[A-Za-z_][A-Za-z0-9_:]*"),
               re.compile(r"\b(?:Initialize|Register|Setup)[A-Za-z_0-9]*\b"),
@@ -196,12 +250,16 @@ jobs:
           ]
 
           hits = 0
+
           for path, text in all_text.items():
-              if path.suffix not in {".cpp", ".cc", ".c", ".h", ".hpp", ".cmake"}:
+              if path.suffix not in {
+                  ".cpp", ".cc", ".c", ".h", ".hpp", ".cmake"
+              }:
                   continue
 
               for number, line in enumerate(text.splitlines(), 1):
                   stripped = line.strip()
+
                   if not stripped or stripped.startswith("//"):
                       continue
 
@@ -233,7 +291,11 @@ jobs:
               "seja compativel com Android ARM64."
           )
 
-          report.write_text("\n".join(lines) + "\n", encoding="utf-8")
+          report.write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8"
+          )
+
           print(report.read_text(encoding="utf-8"))
           PYTHON
 
@@ -243,13 +305,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gradle -p android --no-daemon assembleDebug
+          gradle -p android --no-daemon --stacktrace assembleDebug
 
       - name: Verificar APK gerado
         shell: bash
         run: |
           set -euo pipefail
+
           APK="android/app/build/outputs/apk/debug/app-debug.apk"
+
           test -f "$APK"
           ls -lh "$APK"
           file "$APK"
@@ -259,18 +323,25 @@ jobs:
         shell: bash
         run: |
           mkdir -p android-diagnostic
+
           {
             echo "Diagnostico do ambiente Android"
             date -u
+
             java -version 2>&1 || true
             python --version 2>&1 || true
             gradle --version 2>&1 || true
+
             echo "ANDROID_HOME=${ANDROID_HOME:-nao definido}"
+
             ls "${ANDROID_HOME:-/nonexistent}/ndk" 2>&1 || true
             cmake --version 2>&1 || true
+
             echo "APKs encontrados:"
+
             find android/app/build/outputs/apk \
               -type f -name "*.apk" -print 2>&1 || true
+
           } > android-diagnostic/environment.txt
 
       - name: Publicar diagnostico
