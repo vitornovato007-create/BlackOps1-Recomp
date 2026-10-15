@@ -40,6 +40,7 @@ set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
 
 add_subdirectory("${REXGLUE_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/rexglue-sdk")
 include("${BLACKOPS1_GENERATED_DIR}/sources.cmake")
+
 if(NOT GENERATED_SOURCES)
   message(FATAL_ERROR "generated/sources.cmake nao definiu GENERATED_SOURCES; nao e possivel ligar o codigo do jogo.")
 endif()
@@ -49,7 +50,28 @@ add_library(blackops1_android SHARED
   "${BLACKOPS1_ROOT}/src/main.cpp"
   "${REXGLUE_SOURCE_DIR}/src/ui/windowed_app_main_sdl.cpp"
   "${REXGLUE_SOURCE_DIR}/src/ui/rex_app.cpp"
-  ${GENERATED_SOURCES})
+  ${GENERATED_SOURCES}
+)
+
+# Integração do extrator XISO.
+# O arquivo oficial precisa existir neste caminho.
+set(EXTRACT_XISO_SOURCE
+    "${BLACKOPS1_ROOT}/third_party/extract-xiso/extract-xiso.c")
+
+if(NOT EXISTS "${EXTRACT_XISO_SOURCE}")
+  message(FATAL_ERROR
+    "Falta o fonte oficial: ${EXTRACT_XISO_SOURCE}. "
+    "Adicione o código-fonte do XboxDev/extract-xiso antes de compilar.")
+endif()
+
+set_source_files_properties("${EXTRACT_XISO_SOURCE}" PROPERTIES
+  COMPILE_DEFINITIONS "main=extract_xiso_cli_main;__LINUX__"
+)
+
+target_sources(blackops1_android PRIVATE
+  "${EXTRACT_XISO_SOURCE}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/native-xiso-bridge.cpp"
+)
 
 target_include_directories(blackops1_android PRIVATE
   "${BLACKOPS1_ROOT}"
@@ -58,10 +80,19 @@ target_include_directories(blackops1_android PRIVATE
   "${BLACKOPS1_GENERATED_DIR}/headers"
   "${REXGLUE_SOURCE_DIR}/include"
   "${REXGLUE_SOURCE_DIR}/src"
-  "${REXGLUE_SOURCE_DIR}/thirdparty")
+  "${REXGLUE_SOURCE_DIR}/thirdparty"
+)
 
-target_compile_options(blackops1_android PRIVATE -Wall -Wextra -fno-strict-aliasing -fno-char8_t)
-target_compile_definitions(blackops1_android PRIVATE REXGLUE_BUILD_CONFIG="$<CONFIG>")
+target_compile_options(blackops1_android PRIVATE
+  -Wall
+  -Wextra
+  -fno-strict-aliasing
+  -fno-char8_t
+)
+
+target_compile_definitions(blackops1_android PRIVATE
+  REXGLUE_BUILD_CONFIG="$<CONFIG>"
+)
 
 find_library(android_log_lib log REQUIRED)
 find_library(android_lib android REQUIRED)
@@ -69,10 +100,20 @@ find_library(dl_lib dl REQUIRED)
 find_library(vulkan_lib vulkan REQUIRED)
 
 target_link_libraries(blackops1_android PRIVATE
-  rex::runtime rex::ui rex::audio rex::input rex::gpu-xenos SDL3::SDL3
-  ${android_log_lib} ${android_lib} ${dl_lib} ${vulkan_lib})
+  rex::runtime
+  rex::ui
+  rex::audio
+  rex::input
+  rex::gpu-xenos
+  SDL3::SDL3
+  ${android_log_lib}
+  ${android_lib}
+  ${dl_lib}
+  ${vulkan_lib}
+)
 
 set_target_properties(blackops1_android PROPERTIES
   OUTPUT_NAME "blackops1_android"
   CXX_VISIBILITY_PRESET default
-  VISIBILITY_INLINES_HIDDEN OFF)
+  VISIBILITY_INLINES_HIDDEN OFF
+)
