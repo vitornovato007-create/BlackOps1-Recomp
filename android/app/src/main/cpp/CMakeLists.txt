@@ -2,7 +2,8 @@ cmake_minimum_required(VERSION 3.25)
 project(BlackOps1AndroidNative LANGUAGES C CXX)
 
 if(NOT ANDROID OR NOT CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
-  message(FATAL_ERROR "BlackOps1-Recomp requer build Android ARM64 (arm64-v8a).")
+  message(FATAL_ERROR
+    "BlackOps1-Recomp requer build Android ARM64 (arm64-v8a).")
 endif()
 
 set(CMAKE_CXX_STANDARD 23)
@@ -10,7 +11,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-get_filename_component(BLACKOPS1_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../../.." ABSOLUTE)
+get_filename_component(
+  BLACKOPS1_ROOT
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../../../.."
+  ABSOLUTE
+)
+
 set(REXGLUE_SOURCE_DIR "${BLACKOPS1_ROOT}/rexglue-sdk")
 set(BLACKOPS1_GENERATED_DIR "${BLACKOPS1_ROOT}/generated")
 
@@ -22,29 +28,43 @@ foreach(_required
     "${BLACKOPS1_ROOT}/src/blackops1_app.h"
     "${BLACKOPS1_GENERATED_DIR}/sources.cmake"
     "${BLACKOPS1_GENERATED_DIR}/headers/blackops1_init.h"
-    "${BLACKOPS1_GENERATED_DIR}/headers/blackops1_pch.h")
+    "${BLACKOPS1_GENERATED_DIR}/headers/blackops1_pch.h"
+)
   if(NOT EXISTS "${_required}")
-    message(FATAL_ERROR "Arquivo indispensavel ausente: ${_required}. Inicialize o SDK SDL3 e gere os fontes do jogo antes de compilar o runtime.")
+    message(FATAL_ERROR
+      "Arquivo indispensavel ausente: ${_required}. "
+      "Inicialize o SDK SDL3 e gere os fontes do jogo antes "
+      "de compilar o runtime.")
   endif()
 endforeach()
 
+# Configuração do ReXGlue para Android.
 set(REXGLUE_USE_D3D12 OFF CACHE BOOL "" FORCE)
 set(REXGLUE_USE_VULKAN ON CACHE BOOL "" FORCE)
 set(REXGLUE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(REXGLUE_ENABLE_TRACY OFF CACHE BOOL "" FORCE)
 set(REXGLUE_ENABLE_PERF_COUNTERS OFF CACHE BOOL "" FORCE)
 set(REXGLUE_ENABLE_SANITIZERS OFF CACHE BOOL "" FORCE)
+
+# Configuração do SDL3.
 set(SDL_SHARED ON CACHE BOOL "" FORCE)
 set(SDL_STATIC OFF CACHE BOOL "" FORCE)
 set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
 
-add_subdirectory("${REXGLUE_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/rexglue-sdk")
+add_subdirectory(
+  "${REXGLUE_SOURCE_DIR}"
+  "${CMAKE_BINARY_DIR}/rexglue-sdk"
+)
+
 include("${BLACKOPS1_GENERATED_DIR}/sources.cmake")
 
 if(NOT GENERATED_SOURCES)
-  message(FATAL_ERROR "generated/sources.cmake nao definiu GENERATED_SOURCES; nao e possivel ligar o codigo do jogo.")
+  message(FATAL_ERROR
+    "generated/sources.cmake nao definiu GENERATED_SOURCES; "
+    "nao e possivel ligar o codigo do jogo.")
 endif()
 
+# Biblioteca nativa principal.
 add_library(blackops1_android SHARED
   native-lib.cpp
   "${BLACKOPS1_ROOT}/src/main.cpp"
@@ -54,9 +74,9 @@ add_library(blackops1_android SHARED
 )
 
 # Integração do extrator XISO.
-# O arquivo oficial precisa existir neste caminho.
 set(EXTRACT_XISO_SOURCE
-    "${BLACKOPS1_ROOT}/third_party/extract-xiso/extract-xiso.c")
+  "${BLACKOPS1_ROOT}/thirdparty/extract-xiso/extract-xiso.c"
+)
 
 if(NOT EXISTS "${EXTRACT_XISO_SOURCE}")
   message(FATAL_ERROR
@@ -64,13 +84,29 @@ if(NOT EXISTS "${EXTRACT_XISO_SOURCE}")
     "Adicione o código-fonte do XboxDev/extract-xiso antes de compilar.")
 endif()
 
-set_source_files_properties("${EXTRACT_XISO_SOURCE}" PROPERTIES
-  COMPILE_DEFINITIONS "main=extract_xiso_cli_main;__LINUX__"
+# O nome da função precisa corresponder ao declarado
+# em NativeXisoBridge.cpp.
+set_source_files_properties(
+  "${EXTRACT_XISO_SOURCE}"
+  PROPERTIES
+  COMPILE_DEFINITIONS "main=blackops_extract_xiso_main;__LINUX__"
 )
+
+# IMPORTANTE: o nome respeita exatamente as maiúsculas
+# do arquivo NativeXisoBridge.cpp no repositório.
+set(XISO_BRIDGE_SOURCE
+  "${CMAKE_CURRENT_SOURCE_DIR}/NativeXisoBridge.cpp"
+)
+
+if(NOT EXISTS "${XISO_BRIDGE_SOURCE}")
+  message(FATAL_ERROR
+    "Ponte JNI nao encontrada: ${XISO_BRIDGE_SOURCE}. "
+    "Confira o nome NativeXisoBridge.cpp e sua localização.")
+endif()
 
 target_sources(blackops1_android PRIVATE
   "${EXTRACT_XISO_SOURCE}"
-  "${CMAKE_CURRENT_SOURCE_DIR}/native-xiso-bridge.cpp"
+  "${XISO_BRIDGE_SOURCE}"
 )
 
 target_include_directories(blackops1_android PRIVATE
