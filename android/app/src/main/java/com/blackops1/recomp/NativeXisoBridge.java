@@ -1,10 +1,17 @@
-package com.blackops1.recomp.importer;
+package com.blackops1.recomp;
 
-/** JNI bridge for the XboxDev extract-xiso engine. */
+/** Ponte JNI para o extract-xiso embutido na biblioteca nativa. */
 public final class NativeXisoBridge {
+    static {
+        System.loadLibrary("blackops1_android");
+    }
+
     private NativeXisoBridge() {}
 
-    public static native boolean isAvailable();
-    /** Returns 0 on success; non-zero means extraction failed. */
-    public static native int extract(String isoPath, String outputDirectory, boolean skipSystemUpdate);
+    /**
+     * Extrai uma ISO XISO para um diretório existente.
+     * isoPath deve ser um caminho local acessível, não um content:// URI.
+     * @return código de saída do extract-xiso (0 indica sucesso).
+     */
+    public static native int extractFile(String isoPath, String outputDir);
 }
