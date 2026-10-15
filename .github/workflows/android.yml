@@ -16,7 +16,6 @@ jobs:
       - name: Baixar repositorio
         uses: actions/checkout@v4
 
-      # Preparar SDL3 oficial para o ReXGlue
       - name: Preparar SDL3 para o ReXGlue
         shell: bash
         run: |
@@ -56,6 +55,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.13"
+          validate-wrappers: false
 
       - name: Configurar Android SDK
         uses: android-actions/setup-android@v4
