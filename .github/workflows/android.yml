@@ -2,14 +2,6 @@ name: Android ARM64 Build
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - 'android/**'
-      - 'generated/**'
-      - 'src/**'
-      - 'rexglue-sdk/**'
-      - 'thirdparty/**'
-      - '.github/workflows/android.yml'
 
 permissions:
   contents: read
