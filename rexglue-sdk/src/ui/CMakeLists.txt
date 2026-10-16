@@ -73,12 +73,9 @@ elseif(APPLE)
     set(REXUI_PLATFORM_SOURCES
         surface_mac.cpp
     )
-elseif(ANDROID)
-    # Android uses SDL3 and does not use the Linux desktop surface.
-    set(REXUI_PLATFORM_SOURCES
-        surface_gnulinux.cpp
-    )
 else()
+    # Keep the existing Linux surface source.
+    # Its compatibility with Android must be verified separately.
     set(REXUI_PLATFORM_SOURCES
         surface_gnulinux.cpp
     )
@@ -157,9 +154,9 @@ if(REXGLUE_USE_VULKAN)
 endif()
 
 # Platform-specific dependencies.
-# Do not require X11 or Wayland when compiling for Android.
+# Android uses SDL3 and must not require Linux desktop X11/Wayland packages.
 if(ANDROID)
-    # SDL3 supplies the Android window and Vulkan surface integration.
+    # No X11 or Wayland dependencies for Android.
 elseif(UNIX AND NOT APPLE)
     find_package(PkgConfig REQUIRED)
 
