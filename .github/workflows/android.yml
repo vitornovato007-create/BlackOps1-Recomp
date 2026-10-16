@@ -24,8 +24,6 @@ jobs:
       - name: Baixar repositorio
         uses: actions/checkout@v4
 
-      # Verifica os arquivos antes de instalar as ferramentas.
-      # Se algo estiver faltando, mostra exatamente o caminho.
       - name: Verificar estrutura do projeto
         shell: bash
         run: |
@@ -39,7 +37,8 @@ jobs:
             "android/app/src/main/AndroidManifest.xml"
             "android/app/src/main/cpp/CMakeLists.txt"
             "android/app/src/main/cpp/native-lib.cpp"
-            "android/app/src/main/cpp/NativeXisoBridge.cpp"
+            "android/app/src/main/cpp/native-xiso-bridge.cpp"
+            "android/app/src/main/cpp/xiso-integration.cmake"
             "thirdparty/extract-xiso/extract-xiso.c"
           )
 
@@ -60,20 +59,14 @@ jobs:
 
           if [ "$missing" -ne 0 ]; then
             echo ""
-            echo "ARQUIVOS ENCONTRADOS NAS PASTAS RELEVANTES:"
+            echo "Arquivos encontrados nas pastas relevantes:"
             find android/app/src/main/cpp thirdparty \
               -maxdepth 5 -type f -print 2>/dev/null || true
-
-            echo ""
-            echo "Confira os caminhos acima e envie os arquivos ausentes ao repositorio."
             exit 1
           fi
 
           echo "Estrutura inicial encontrada."
 
-      # O ReXGlue precisa ter seus submodulos inicializados.
-      # Se o checkout existente estiver incompleto, tenta preparar
-      # uma copia completa usando o endereco configurado abaixo.
       - name: Preparar ReXGlue e submodulos
         shell: bash
         run: |
@@ -89,7 +82,6 @@ jobs:
           else
             echo "Checkout existente incompleto."
             echo "Tentando obter ReXGlue com submodulos..."
-
             rm -rf rexglue-sdk
             git clone --recursive "$REXGLUE_URL" rexglue-sdk
           fi
@@ -111,12 +103,12 @@ jobs:
           SDL_DIR="rexglue-sdk/thirdparty/sdl3"
 
           if [ ! -f "$SDL_DIR/CMakeLists.txt" ]; then
-            echo "::error::SDL3 nao foi encontrado em $SDL_DIR"
+            echo "::error::SDL3 nao encontrado em $SDL_DIR"
             exit 1
           fi
 
           if [ ! -d "$SDL_DIR/include/SDL3" ]; then
-            echo "::error::Cabecalhos SDL3 nao encontrados em $SDL_DIR/include/SDL3"
+            echo "::error::Cabecalhos SDL3 nao encontrados."
             exit 1
           fi
 
@@ -169,41 +161,34 @@ jobs:
           ls "$ANDROID_HOME/ndk"
           cmake --version
 
-      # Confere o arquivo CMake e o codigo nativo do importador.
-      - name: Verificar integracao nativa
+      - name: Verificar integracao nativa XISO
         shell: bash
         run: |
           set -euo pipefail
 
-          CMAKE_FILE="android/app/src/main/cpp/CMakeLists.txt"
-          BRIDGE_FILE="android/app/src/main/cpp/NativeXisoBridge.cpp"
+          CPP_DIR="android/app/src/main/cpp"
+          CMAKE_FILE="$CPP_DIR/CMakeLists.txt"
+          BRIDGE_FILE="$CPP_DIR/native-xiso-bridge.cpp"
           XISO_FILE="thirdparty/extract-xiso/extract-xiso.c"
 
-          echo "Verificando integracao do extract-xiso..."
+          test -f "$CMAKE_FILE"
+          test -f "$BRIDGE_FILE"
+          test -f "$XISO_FILE"
 
-          grep -n "extract-xiso" "$CMAKE_FILE" || {
-            echo "::error file=$CMAKE_FILE::A referencia ao extract-xiso nao foi encontrada no CMakeLists.txt."
-            exit 1
-          }
+          echo "Referencias XISO no CMake:"
+          grep -n -i "xiso" "$CMAKE_FILE" || true
 
-          grep -n "NativeXisoBridge.cpp" "$CMAKE_FILE" || {
-            echo "::error file=$CMAKE_FILE::A ponte NativeXisoBridge.cpp nao foi referenciada no CMakeLists.txt."
-            exit 1
-          }
+          echo ""
+          echo "Conteudo do arquivo de integracao:"
+          cat "$CPP_DIR/xiso-integration.cmake"
 
-          if [ ! -f "$BRIDGE_FILE" ]; then
-            echo "::error file=$BRIDGE_FILE::Ponte JNI ausente."
-            exit 1
-          fi
-
-          if [ ! -f "$XISO_FILE" ]; then
-            echo "::error file=$XISO_FILE::O codigo-fonte extract-xiso.c nao existe nesse caminho."
-            echo "Arquivos encontrados em thirdparty:"
-            find thirdparty -maxdepth 5 -type f -print 2>/dev/null || true
+          if ! grep -qi "native-xiso-bridge.cpp" "$CMAKE_FILE" &&
+             ! grep -qi "xiso-integration.cmake" "$CMAKE_FILE"; then
+            echo "::error file=$CMAKE_FILE::O CMakeLists.txt nao referencia a ponte XISO nem o arquivo xiso-integration.cmake."
             exit 1
           fi
 
-          echo "Arquivos da integracao encontrados."
+          echo "Arquivos XISO encontrados."
 
       - name: Inspecionar codigo gerado
         shell: bash
@@ -257,9 +242,8 @@ jobs:
                   lines.append(f"  {path.as_posix()}")
 
               lines.append("")
-              lines.append("AVISO:")
               lines.append(
-                  "Esta inspecao estatica nao comprova compatibilidade "
+                  "A inspecao estatica nao comprova compatibilidade "
                   "do runtime com Android ARM64."
               )
 
@@ -267,7 +251,6 @@ jobs:
               "\n".join(lines) + "\n",
               encoding="utf-8"
           )
-
           print(report.read_text(encoding="utf-8"))
           PYTHON
 
@@ -285,12 +268,12 @@ jobs:
           APK="android/app/build/outputs/apk/debug/app-debug.apk"
 
           if [ ! -f "$APK" ]; then
-            echo "::error::O APK nao foi encontrado em $APK"
-            find android/app/build/outputs -type f -print 2>/dev/null || true
+            echo "::error::APK nao encontrado em $APK"
+            find android/app/build/outputs \
+              -type f -print 2>/dev/null || true
             exit 1
           fi
 
-          echo "APK compilado:"
           ls -lh "$APK"
           file "$APK"
 
@@ -303,13 +286,10 @@ jobs:
           {
             echo "Diagnostico do ambiente Android"
             date -u
-
             java -version 2>&1 || true
             python --version 2>&1 || true
             gradle --version 2>&1 || true
-
             echo "ANDROID_HOME=${ANDROID_HOME:-nao definido}"
-
             ls "${ANDROID_HOME:-/nonexistent}/ndk" 2>&1 || true
             cmake --version 2>&1 || true
 
@@ -317,9 +297,9 @@ jobs:
             find android/app/build/outputs \
               -type f -name "*.apk" -print 2>&1 || true
 
-            echo "Arquivos extract-xiso encontrados:"
-            find thirdparty -maxdepth 5 \
-              -iname '*xiso*' -type f -print 2>&1 || true
+            echo "Arquivos XISO encontrados:"
+            find thirdparty android/app/src/main/cpp \
+              -maxdepth 5 -iname '*xiso*' -type f -print 2>&1 || true
           } > android-diagnostic/environment.txt
 
       - name: Publicar diagnosticos
