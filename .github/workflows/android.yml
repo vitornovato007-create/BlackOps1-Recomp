@@ -15,55 +15,34 @@ jobs:
     steps:
       - name: Baixar repositorio
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 0
 
-      - name: Inicializar submodulos do ReXGlue
+      - name: Baixar ReXGlue com submodulos
         shell: bash
         run: |
           set -euo pipefail
 
-          if [ ! -d "rexglue-sdk" ]; then
-            echo "::error::A pasta rexglue-sdk nao foi encontrada."
-            exit 1
+          REXGLUE_URL="https://github.com/rexglue/rexglue-sdk.git"
+
+          if [ -f "rexglue-sdk/CMakeLists.txt" ] &&
+             [ -f "rexglue-sdk/thirdparty/cli11/CMakeLists.txt" ] &&
+             [ -f "rexglue-sdk/thirdparty/sdl3/CMakeLists.txt" ]; then
+            echo "ReXGlue e os componentes obrigatorios ja estao presentes."
+          else
+            echo "Preparando checkout completo do ReXGlue..."
+            rm -rf rexglue-sdk
+
+            git clone --recursive "$REXGLUE_URL" rexglue-sdk
           fi
 
-          if [ ! -e "rexglue-sdk/.git" ]; then
-            echo "::error::rexglue-sdk nao e um checkout Git. O SDK precisa ser baixado como repositorio Git para inicializar seus submodulos."
-            exit 1
-          fi
-
-          git -C rexglue-sdk submodule sync --recursive
-          git -C rexglue-sdk submodule update --init --recursive
-
-          echo "Verificando submodulos obrigatorios..."
-
-          for path in \
-            cli11 \
-            libmspack \
-            FFmpeg \
-            tomlplusplus \
-            simde \
-            xxHash \
-            spdlog \
-            fmt \
-            utfcpp \
-            imgui \
-            sdl3
-          do
-            if [ ! -d "rexglue-sdk/thirdparty/$path" ]; then
-              echo "::error::Submodulo ausente: rexglue-sdk/thirdparty/$path"
-              exit 1
-            fi
-          done
-
+          test -f rexglue-sdk/CMakeLists.txt
           test -f rexglue-sdk/thirdparty/cli11/CMakeLists.txt
           test -f rexglue-sdk/thirdparty/sdl3/CMakeLists.txt
 
+          echo "ReXGlue preparado."
+          git -C rexglue-sdk log -1 --oneline
           git -C rexglue-sdk submodule status --recursive
 
-      - name: Preparar SDL3 para o ReXGlue
+      - name: Verificar e preparar SDL3
         shell: bash
         run: |
           set -euo pipefail
@@ -71,13 +50,13 @@ jobs:
           SDL_DIR="rexglue-sdk/thirdparty/sdl3"
 
           if [ ! -f "$SDL_DIR/CMakeLists.txt" ]; then
-            echo "::error::SDL3 nao foi inicializado como submodulo. Verifique a configuracao do ReXGlue."
+            echo "::error::SDL3 nao foi encontrado dentro do ReXGlue."
             exit 1
           fi
 
           test -d "$SDL_DIR/include/SDL3"
 
-          echo "SDL3 preparado com sucesso."
+          echo "SDL3 preparado."
           git -C "$SDL_DIR" log -1 --oneline || true
 
       - name: Instalar Java
@@ -144,7 +123,7 @@ jobs:
           test -f android/app/src/main/cpp/NativeXisoBridge.cpp
           test -f thirdparty/extract-xiso/extract-xiso.c
 
-          echo "Estrutura Android e fonte XISO encontrados."
+          echo "Estrutura Android encontrada."
 
       - name: Inspecionar codigo gerado
         shell: bash
@@ -174,9 +153,7 @@ jobs:
               print(report.read_text(encoding="utf-8"))
               raise SystemExit(0)
 
-          extensions = {
-              ".cpp", ".cc", ".c", ".h", ".hpp", ".cmake"
-          }
+          extensions = {".cpp", ".cc", ".c", ".h", ".hpp", ".cmake"}
 
           files = sorted(
               p for p in root.rglob("*")
@@ -299,9 +276,7 @@ jobs:
                       hits += 1
 
                       if hits >= 500:
-                          lines.append(
-                              "Limite de 500 ocorrencias atingido."
-                          )
+                          lines.append("Limite de 500 ocorrencias atingido.")
                           break
 
               if hits >= 500:
