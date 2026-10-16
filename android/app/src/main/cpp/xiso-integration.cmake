@@ -1,4 +1,3 @@
-```cmake
 # Integracao do extract-xiso no alvo Android existente.
 # Este arquivo deve ser incluido pelo CMakeLists.txt principal
 # depois de add_library(blackops1_android ...) e antes de
