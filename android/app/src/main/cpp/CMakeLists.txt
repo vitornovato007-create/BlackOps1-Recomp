@@ -38,7 +38,7 @@ foreach(_required
   endif()
 endforeach()
 
-# Configuração do ReXGlue para Android.
+# Configuracao do ReXGlue para Android.
 set(REXGLUE_USE_D3D12 OFF CACHE BOOL "" FORCE)
 set(REXGLUE_USE_VULKAN ON CACHE BOOL "" FORCE)
 set(REXGLUE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -46,7 +46,7 @@ set(REXGLUE_ENABLE_TRACY OFF CACHE BOOL "" FORCE)
 set(REXGLUE_ENABLE_PERF_COUNTERS OFF CACHE BOOL "" FORCE)
 set(REXGLUE_ENABLE_SANITIZERS OFF CACHE BOOL "" FORCE)
 
-# Configuração do SDL3.
+# Configuracao do SDL3.
 set(SDL_SHARED ON CACHE BOOL "" FORCE)
 set(SDL_STATIC OFF CACHE BOOL "" FORCE)
 set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
@@ -73,41 +73,8 @@ add_library(blackops1_android SHARED
   ${GENERATED_SOURCES}
 )
 
-# Integração do extrator XISO.
-set(EXTRACT_XISO_SOURCE
-  "${BLACKOPS1_ROOT}/thirdparty/extract-xiso/extract-xiso.c"
-)
-
-if(NOT EXISTS "${EXTRACT_XISO_SOURCE}")
-  message(FATAL_ERROR
-    "Falta o fonte oficial: ${EXTRACT_XISO_SOURCE}. "
-    "Adicione o código-fonte do XboxDev/extract-xiso antes de compilar.")
-endif()
-
-# O nome da função precisa corresponder ao declarado
-# em NativeXisoBridge.cpp.
-set_source_files_properties(
-  "${EXTRACT_XISO_SOURCE}"
-  PROPERTIES
-  COMPILE_DEFINITIONS "main=blackops_extract_xiso_main;__LINUX__"
-)
-
-# IMPORTANTE: o nome respeita exatamente as maiúsculas
-# do arquivo NativeXisoBridge.cpp no repositório.
-set(XISO_BRIDGE_SOURCE
-  "${CMAKE_CURRENT_SOURCE_DIR}/NativeXisoBridge.cpp"
-)
-
-if(NOT EXISTS "${XISO_BRIDGE_SOURCE}")
-  message(FATAL_ERROR
-    "Ponte JNI nao encontrada: ${XISO_BRIDGE_SOURCE}. "
-    "Confira o nome NativeXisoBridge.cpp e sua localização.")
-endif()
-
-target_sources(blackops1_android PRIVATE
-  "${EXTRACT_XISO_SOURCE}"
-  "${XISO_BRIDGE_SOURCE}"
-)
+# Integra a extracao XISO uma unica vez.
+include("${CMAKE_CURRENT_LIST_DIR}/xiso-integration.cmake")
 
 target_include_directories(blackops1_android PRIVATE
   "${BLACKOPS1_ROOT}"
