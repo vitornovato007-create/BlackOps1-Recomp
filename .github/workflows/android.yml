@@ -2,6 +2,14 @@ name: Android ARM64 Build
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - 'android/**'
+      - 'generated/**'
+      - 'src/**'
+      - 'rexglue-sdk/**'
+      - 'thirdparty/**'
+      - '.github/workflows/android.yml'
 
 permissions:
   contents: read
@@ -16,7 +24,57 @@ jobs:
       - name: Baixar repositorio
         uses: actions/checkout@v4
 
-      - name: Baixar ReXGlue com submodulos
+      # Verifica os arquivos antes de instalar as ferramentas.
+      # Se algo estiver faltando, mostra exatamente o caminho.
+      - name: Verificar estrutura do projeto
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          required_files=(
+            "android/settings.gradle"
+            "android/build.gradle"
+            "android/gradle.properties"
+            "android/app/build.gradle"
+            "android/app/src/main/AndroidManifest.xml"
+            "android/app/src/main/cpp/CMakeLists.txt"
+            "android/app/src/main/cpp/native-lib.cpp"
+            "android/app/src/main/cpp/NativeXisoBridge.cpp"
+            "thirdparty/extract-xiso/extract-xiso.c"
+          )
+
+          missing=0
+
+          echo "=========================================="
+          echo "VERIFICACAO DA ESTRUTURA DO PROJETO"
+          echo "=========================================="
+
+          for path in "${required_files[@]}"; do
+            if [ -f "$path" ]; then
+              echo "[OK] $path"
+            else
+              echo "::error file=$path::Arquivo obrigatorio nao encontrado: $path"
+              missing=1
+            fi
+          done
+
+          if [ "$missing" -ne 0 ]; then
+            echo ""
+            echo "ARQUIVOS ENCONTRADOS NAS PASTAS RELEVANTES:"
+            find android/app/src/main/cpp thirdparty \
+              -maxdepth 5 -type f -print 2>/dev/null || true
+
+            echo ""
+            echo "Confira os caminhos acima e envie os arquivos ausentes ao repositorio."
+            exit 1
+          fi
+
+          echo "Estrutura inicial encontrada."
+
+      # O ReXGlue precisa ter seus submodulos inicializados.
+      # Se o checkout existente estiver incompleto, tenta preparar
+      # uma copia completa usando o endereco configurado abaixo.
+      - name: Preparar ReXGlue e submodulos
         shell: bash
         run: |
           set -euo pipefail
@@ -24,25 +82,28 @@ jobs:
           REXGLUE_URL="https://github.com/rexglue/rexglue-sdk.git"
 
           if [ -f "rexglue-sdk/CMakeLists.txt" ] &&
+             [ -f "rexglue-sdk/thirdparty/CMakeLists.txt" ] &&
              [ -f "rexglue-sdk/thirdparty/cli11/CMakeLists.txt" ] &&
              [ -f "rexglue-sdk/thirdparty/sdl3/CMakeLists.txt" ]; then
-            echo "ReXGlue e os componentes obrigatorios ja estao presentes."
+            echo "ReXGlue e componentes principais encontrados."
           else
-            echo "Preparando checkout completo do ReXGlue..."
-            rm -rf rexglue-sdk
+            echo "Checkout existente incompleto."
+            echo "Tentando obter ReXGlue com submodulos..."
 
+            rm -rf rexglue-sdk
             git clone --recursive "$REXGLUE_URL" rexglue-sdk
           fi
 
-          test -f rexglue-sdk/CMakeLists.txt
-          test -f rexglue-sdk/thirdparty/cli11/CMakeLists.txt
-          test -f rexglue-sdk/thirdparty/sdl3/CMakeLists.txt
+          test -f "rexglue-sdk/CMakeLists.txt"
+          test -f "rexglue-sdk/thirdparty/CMakeLists.txt"
+          test -f "rexglue-sdk/thirdparty/cli11/CMakeLists.txt"
+          test -f "rexglue-sdk/thirdparty/sdl3/CMakeLists.txt"
 
           echo "ReXGlue preparado."
           git -C rexglue-sdk log -1 --oneline
           git -C rexglue-sdk submodule status --recursive
 
-      - name: Verificar e preparar SDL3
+      - name: Verificar SDL3
         shell: bash
         run: |
           set -euo pipefail
@@ -50,36 +111,37 @@ jobs:
           SDL_DIR="rexglue-sdk/thirdparty/sdl3"
 
           if [ ! -f "$SDL_DIR/CMakeLists.txt" ]; then
-            echo "::error::SDL3 nao foi encontrado dentro do ReXGlue."
+            echo "::error::SDL3 nao foi encontrado em $SDL_DIR"
             exit 1
           fi
 
-          test -d "$SDL_DIR/include/SDL3"
+          if [ ! -d "$SDL_DIR/include/SDL3" ]; then
+            echo "::error::Cabecalhos SDL3 nao encontrados em $SDL_DIR/include/SDL3"
+            exit 1
+          fi
 
-          echo "SDL3 preparado."
+          echo "SDL3 encontrado."
           git -C "$SDL_DIR" log -1 --oneline || true
 
       - name: Instalar Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '17'
 
       - name: Instalar Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: '3.10'
 
       - name: Configurar Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.13"
+          gradle-version: '8.13'
           validate-wrappers: false
 
       - name: Configurar Android SDK
         uses: android-actions/setup-android@v4
-        with:
-          packages: ""
 
       - name: Instalar componentes Android
         shell: bash
@@ -102,28 +164,46 @@ jobs:
           python --version
           gradle --version
 
-          echo "ANDROID_HOME=$ANDROID_HOME"
-
+          echo "ANDROID_HOME=${ANDROID_HOME:-nao definido}"
           sdkmanager --list_installed
           ls "$ANDROID_HOME/ndk"
           cmake --version
 
-      - name: Verificar estrutura Android
+      # Confere o arquivo CMake e o codigo nativo do importador.
+      - name: Verificar integracao nativa
         shell: bash
         run: |
           set -euo pipefail
 
-          test -f android/settings.gradle
-          test -f android/build.gradle
-          test -f android/gradle.properties
-          test -f android/app/build.gradle
-          test -f android/app/src/main/AndroidManifest.xml
-          test -f android/app/src/main/cpp/CMakeLists.txt
-          test -f android/app/src/main/cpp/native-lib.cpp
-          test -f android/app/src/main/cpp/NativeXisoBridge.cpp
-          test -f thirdparty/extract-xiso/extract-xiso.c
+          CMAKE_FILE="android/app/src/main/cpp/CMakeLists.txt"
+          BRIDGE_FILE="android/app/src/main/cpp/NativeXisoBridge.cpp"
+          XISO_FILE="thirdparty/extract-xiso/extract-xiso.c"
 
-          echo "Estrutura Android encontrada."
+          echo "Verificando integracao do extract-xiso..."
+
+          grep -n "extract-xiso" "$CMAKE_FILE" || {
+            echo "::error file=$CMAKE_FILE::A referencia ao extract-xiso nao foi encontrada no CMakeLists.txt."
+            exit 1
+          }
+
+          grep -n "NativeXisoBridge.cpp" "$CMAKE_FILE" || {
+            echo "::error file=$CMAKE_FILE::A ponte NativeXisoBridge.cpp nao foi referenciada no CMakeLists.txt."
+            exit 1
+          }
+
+          if [ ! -f "$BRIDGE_FILE" ]; then
+            echo "::error file=$BRIDGE_FILE::Ponte JNI ausente."
+            exit 1
+          fi
+
+          if [ ! -f "$XISO_FILE" ]; then
+            echo "::error file=$XISO_FILE::O codigo-fonte extract-xiso.c nao existe nesse caminho."
+            echo "Arquivos encontrados em thirdparty:"
+            find thirdparty -maxdepth 5 -type f -print 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "Arquivos da integracao encontrados."
 
       - name: Inspecionar codigo gerado
         shell: bash
@@ -132,180 +212,64 @@ jobs:
 
           mkdir -p android-diagnostic
 
-          cat > /tmp/inspect_generated.py <<'PYTHON'
-          import re
+          python - <<'PYTHON'
           from pathlib import Path
 
           root = Path("generated")
           report = Path("android-diagnostic/generated-inspection.txt")
-
           lines = [
               "INSPECAO DO CODIGO GERADO",
               "=" * 60,
-              "Diagnostico preliminar para integracao Android/ReXGlue.",
-              "Esta analise estatica nao substitui uma compilacao.",
               "",
           ]
 
           if not root.is_dir():
-              lines.append("ERRO: pasta generated/ nao encontrada.")
-              report.write_text("\n".join(lines), encoding="utf-8")
-              print(report.read_text(encoding="utf-8"))
-              raise SystemExit(0)
-
-          extensions = {".cpp", ".cc", ".c", ".h", ".hpp", ".cmake"}
-
-          files = sorted(
-              p for p in root.rglob("*")
-              if p.is_file() and p.suffix in extensions
-          )
-
-          lines.append(f"Arquivos C/C++/CMake encontrados: {len(files)}")
-          lines.append("")
-
-          all_text = {}
-
-          for path in files:
-              try:
-                  all_text[path] = path.read_text(
-                      encoding="utf-8",
-                      errors="replace",
-                  )
-              except OSError as exc:
-                  lines.append(f"ERRO DE LEITURA: {path}: {exc}")
-
-          lines.append("ARQUIVOS PRINCIPAIS")
-
-          for name in (
-              "blackops1_init.cpp",
-              "blackops1_register.cpp",
-              "sources.cmake",
-              "rexglue.cmake",
-              "blackops1_pch.h",
-              "blackops1_funcs.h",
-          ):
-              path = root / name
-              status = "PRESENTE" if path.is_file() else "AUSENTE"
-              lines.append(f"{name}: {status}")
-
-          lines.extend(["", "ARQUIVOS RECOMPILADOS"])
-
-          recomp_files = sorted(
-              p for p in root.glob("blackops1_recomp.*.cpp")
-              if p.is_file()
-          )
-
-          lines.append(f"Quantidade publicada: {len(recomp_files)}")
-
-          for path in recomp_files:
-              lines.append(f"  {path.as_posix()}")
-
-          lines.extend(["", "ARQUIVOS ESPERADOS POR sources.cmake"])
-
-          sources_file = root / "sources.cmake"
-          expected = set()
-
-          if sources_file.is_file():
-              cmake_text = sources_file.read_text(
-                  encoding="utf-8",
-                  errors="replace",
-              )
-
-              pattern = (
-                  r'(?<![A-Za-z0-9_./-])'
-                  r'([A-Za-z0-9_./-]+\.(?:cpp|cc|c|h|hpp))'
-              )
-
-              for match in re.finditer(pattern, cmake_text):
-                  name = match.group(1)
-                  if "://" not in name:
-                      expected.add(name)
-
-              for name in sorted(expected):
-                  if not (root / name).is_file():
-                      lines.append(f"AUSENTE: {name}")
-
-              if not expected:
-                  lines.append(
-                      "Nenhum caminho de arquivo reconhecido automaticamente."
-                  )
+              lines.append("AVISO: pasta generated/ nao encontrada.")
           else:
-              lines.append("sources.cmake nao encontrado.")
+              extensions = {".cpp", ".cc", ".c", ".h", ".hpp", ".cmake"}
+              files = sorted(
+                  p for p in root.rglob("*")
+                  if p.is_file() and p.suffix in extensions
+              )
 
-          lines.extend(["", "INCLUDES"])
+              lines.append(f"Arquivos C/C++/CMake encontrados: {len(files)}")
+              lines.append("")
 
-          includes = set()
+              for name in (
+                  "blackops1_init.cpp",
+                  "blackops1_register.cpp",
+                  "sources.cmake",
+                  "rexglue.cmake",
+                  "blackops1_pch.h",
+                  "blackops1_funcs.h",
+              ):
+                  path = root / name
+                  status = "PRESENTE" if path.is_file() else "AUSENTE"
+                  lines.append(f"{name}: {status}")
 
-          for path, text in all_text.items():
-              if path.suffix not in {".cpp", ".cc", ".c", ".h", ".hpp"}:
-                  continue
+              lines.append("")
+              lines.append("ARQUIVOS RECOMPILADOS:")
 
-              pattern = r'^\s*#\s*include\s*[<"]([^>"]+)[>"]'
+              recomp = sorted(root.glob("blackops1_recomp.*.cpp"))
+              lines.append(f"Quantidade: {len(recomp)}")
 
-              for match in re.finditer(pattern, text, re.MULTILINE):
-                  includes.add(match.group(1))
+              for path in recomp:
+                  lines.append(f"  {path.as_posix()}")
 
-          for item in sorted(includes):
-              lines.append(f"  {item}")
-
-          lines.extend(["", "REFERENCIAS A RE XGLUE / RUNTIME"])
-
-          patterns = [
-              re.compile(r"rex::[A-Za-z_][A-Za-z0-9_:]*"),
-              re.compile(r"\b(?:Initialize|Register|Setup)[A-Za-z_0-9]*\b"),
-              re.compile(r"\b(?:extern|XenonRuntime|Runtime)\b"),
-              re.compile(r"\b(?:entrypoint|entry_point|main)\b"),
-          ]
-
-          hits = 0
-
-          for path, text in all_text.items():
-              if path.suffix not in extensions:
-                  continue
-
-              for number, line in enumerate(text.splitlines(), 1):
-                  stripped = line.strip()
-
-                  if not stripped or stripped.startswith("//"):
-                      continue
-
-                  if any(pattern.search(line) for pattern in patterns):
-                      lines.append(
-                          f"{path.as_posix()}:{number}: {stripped[:240]}"
-                      )
-                      hits += 1
-
-                      if hits >= 500:
-                          lines.append("Limite de 500 ocorrencias atingido.")
-                          break
-
-              if hits >= 500:
-                  break
-
-          if hits == 0:
-              lines.append("Nenhuma referencia reconhecida automaticamente.")
-
-          lines.extend([
-              "",
-              "RESUMO",
-              f"Arquivos analisados: {len(all_text)}",
-              f"Includes distintos: {len(includes)}",
-              f"Arquivos esperados listados: {len(expected)}",
-              (
-                  "A presenca dos arquivos nao comprova que o runtime "
-                  "seja compativel com Android ARM64."
-              ),
-          ])
+              lines.append("")
+              lines.append("AVISO:")
+              lines.append(
+                  "Esta inspecao estatica nao comprova compatibilidade "
+                  "do runtime com Android ARM64."
+              )
 
           report.write_text(
               "\n".join(lines) + "\n",
-              encoding="utf-8",
+              encoding="utf-8"
           )
 
           print(report.read_text(encoding="utf-8"))
           PYTHON
-
-          python /tmp/inspect_generated.py
 
       - name: Compilar APK ARM64
         shell: bash
@@ -320,7 +284,13 @@ jobs:
 
           APK="android/app/build/outputs/apk/debug/app-debug.apk"
 
-          test -f "$APK"
+          if [ ! -f "$APK" ]; then
+            echo "::error::O APK nao foi encontrado em $APK"
+            find android/app/build/outputs -type f -print 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "APK compilado:"
           ls -lh "$APK"
           file "$APK"
 
@@ -343,19 +313,20 @@ jobs:
             ls "${ANDROID_HOME:-/nonexistent}/ndk" 2>&1 || true
             cmake --version 2>&1 || true
 
-            echo "Status dos submodulos ReXGlue:"
-            git -C rexglue-sdk submodule status --recursive 2>&1 || true
-
             echo "APKs encontrados:"
-            find android/app/build/outputs/apk \
+            find android/app/build/outputs \
               -type f -name "*.apk" -print 2>&1 || true
+
+            echo "Arquivos extract-xiso encontrados:"
+            find thirdparty -maxdepth 5 \
+              -iname '*xiso*' -type f -print 2>&1 || true
           } > android-diagnostic/environment.txt
 
-      - name: Publicar diagnostico
+      - name: Publicar diagnosticos
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: android-build-environment
+          name: android-build-diagnostics
           path: android-diagnostic/
           if-no-files-found: warn
           retention-days: 7
