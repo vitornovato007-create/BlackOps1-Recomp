@@ -47,7 +47,7 @@ buildTypes {
         minifyEnabled false
     }
 }
-```
+
 
 }
 
