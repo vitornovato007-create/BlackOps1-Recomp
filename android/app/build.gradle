@@ -7,7 +7,7 @@ namespace 'com.blackops1.recomp'
 compileSdk 35
 ndkVersion '28.2.13676358'
 
-```
+
 buildFeatures {
     prefab true
 }
