@@ -1,36 +1,28 @@
 #!/usr/bin/env python3
-"""Static checks for the experimental Android ARM64 integration (not a build test)."""
+"""Compatibilidade: encaminha a auditoria Android para o diagnostico unificado.
+
+Uso:
+  python3 tools/android/auditar_integracao.py
+  python3 tools/android/auditar_integracao.py --strict
+
+Sem --strict, os problemas conhecidos sao reportados sem interromper a
+inspecao. Com --strict, o comando retorna codigo diferente de zero quando
+encontrar bloqueadores estaticos. Nenhuma dessas opcoes substitui a compilacao.
+"""
 from pathlib import Path
+import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-checks = {
-    "SDK CMake": ROOT / "rexglue-sdk/CMakeLists.txt",
-    "Android surface header": ROOT / "rexglue-sdk/include/rex/ui/surface_android.h",
-    "Android surface implementation": ROOT / "rexglue-sdk/src/ui/surface_android.cpp",
-    "SDL Android Activity": ROOT / "android/app/src/main/java/com/blackops1/recomp/MainActivity.java",
-    "Android native CMake": ROOT / "android/app/src/main/cpp/CMakeLists.txt",
-    "Generated source manifest": ROOT / "generated/sources.cmake",
-    "XEX required for private APK": ROOT / "game/default.xex",
-}
-failed = False
-for label, path in checks.items():
-    ok = path.is_file()
-    print(f"{'OK' if ok else 'FALTA'}: {label}: {path.relative_to(ROOT)}")
-    failed |= not ok
+DIAGNOSTIC = ROOT / "tools" / "diagnostico_completo.py"
 
-cmake = (ROOT / "android/app/src/main/cpp/CMakeLists.txt").read_text(encoding="utf-8")
-for token in ("add_subdirectory(\"${REXGLUE_SOURCE_DIR}\"", "rex::runtime", "rex::gpu-xenos", "${GENERATED_SOURCES}"):
-    ok = token in cmake
-    print(f"{'OK' if ok else 'FALTA'}: Android CMake contém {token}")
-    failed |= not ok
+if not DIAGNOSTIC.is_file():
+    print(f"ERRO: diagnostico unificado nao encontrado: {DIAGNOSTIC}", file=sys.stderr)
+    raise SystemExit(2)
 
-src = ROOT / "generated/sources"
-files = sorted(src.glob("blackops1_recomp.*.cpp")) if src.is_dir() else []
-print(f"Fontes recompiladas organizadas: {len(files)}")
-if not files:
-    print("FALTA: nenhuma fonte em generated/sources/", file=sys.stderr)
-    failed = True
-
-print("ATENÇÃO: esta auditoria é estática; não prova compilação, carregamento do Vulkan ou boot do jogo.")
-raise SystemExit(1 if failed else 0)
+result = subprocess.run(
+    [sys.executable, str(DIAGNOSTIC), *sys.argv[1:]],
+    cwd=ROOT,
+    check=False,
+)
+raise SystemExit(result.returncode)
