@@ -117,12 +117,19 @@ def main() -> int:
         listed = re.findall(r'["\']([^"\']+\.cpp)["\']', manifest_text)
         missing_sources: list[str] = []
         for entry in listed:
+            # O manifesto usa variaveis CMake como ${CMAKE_CURRENT_LIST_DIR};
+            # essas expressoes nao podem ser resolvidas por pathlib. Validamos
+            # apenas caminhos literais e conferimos os globs abaixo.
+            if "$" in entry:
+                continue
             candidate = Path(entry)
             if not candidate.is_absolute():
                 candidate = generated / candidate
             if not candidate.is_file():
                 missing_sources.append(entry)
         print(f"[INFO] Referencias .cpp no manifesto: {len(listed)}")
+        if "${CMAKE_CURRENT_LIST_DIR}" in manifest_text and "file(GLOB" in manifest_text:
+            print("[INFO] Manifesto usa glob CMake; fontes numeradas sao verificadas no disco.")
         if missing_sources:
             blockers.append(
                 f"{len(missing_sources)} fonte(s) referenciada(s) nao encontrada(s)"
