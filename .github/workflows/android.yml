@@ -16,6 +16,24 @@ jobs:
       - name: Baixar repositorio
         uses: actions/checkout@v4
 
+      - name: Diagnostico estatico unificado
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p android-diagnostic
+          python3 tools/diagnostico_completo.py 2>&1 | tee android-diagnostic/diagnostico-completo.txt
+          diagnostic_status=${PIPESTATUS[0]}
+          if [ "$diagnostic_status" -ne 0 ]; then
+            echo "::error::O diagnostico estatico encontrou bloqueadores."
+            exit "$diagnostic_status"
+          fi
+          python3 scripts/auditar_gerados.py 2>&1 | tee android-diagnostic/auditoria-gerados.txt
+          audit_status=${PIPESTATUS[0]}
+          if [ "$audit_status" -ne 0 ]; then
+            echo "::error::A auditoria de arquivos gerados falhou."
+            exit "$audit_status"
+          fi
+
       - name: Verificar estrutura do projeto
         shell: bash
         run: |
