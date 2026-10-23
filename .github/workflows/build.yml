@@ -376,6 +376,7 @@ jobs:
           path: |
             build/
             generated/
+            build-diagnostic/
             rexglue-sdk/out/linux-amd64/
             ${{ runner.temp }}/blackops1-build.log
           if-no-files-found: warn
