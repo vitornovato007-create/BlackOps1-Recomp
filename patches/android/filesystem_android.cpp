@@ -109,7 +109,7 @@ cleanup:
   if (resolver_class != nullptr) env->DeleteLocalRef(resolver_class);
   if (uri_class != nullptr) env->DeleteLocalRef(uri_class);
   if (context_class != nullptr) env->DeleteLocalRef(context_class);
-  if (activity_class != nullptr) env->DeleteLocalRef(activity);
+  if (activity != nullptr) env->DeleteLocalRef(activity);
   if (activity_class != nullptr) env->DeleteLocalRef(activity_class);
   return result;
 }
