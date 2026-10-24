@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Apply Android native-window support to the temporary ReXGlue checkout."""
 from pathlib import Path
+import re
 
 root = Path("rexglue-sdk")
 patches = Path("patches/android")
@@ -18,36 +19,24 @@ for path in (header_src, source_src, cmake_path, window_path):
 header_dst.write_text(header_src.read_text(encoding="utf-8"), encoding="utf-8")
 source_dst.write_text(source_src.read_text(encoding="utf-8"), encoding="utf-8")
 
+# Upstream ReXGlue v0.10.0 uses a platform-source block with either no
+# comments or a descriptive comment. Replace the block by its boundaries,
+# rather than relying on one exact comment/whitespace version.
 cmake = cmake_path.read_text(encoding="utf-8")
-old_platform_sources = """if(WIN32)
-    set(REXUI_PLATFORM_SOURCES
-        surface_win.cpp
-    )
-elseif(APPLE)
-    set(REXUI_PLATFORM_SOURCES
-        surface_mac.cpp
-    )
-else()
-    # Keep the existing Linux surface source.
-    # Its compatibility with Android must be verified separately.
-    set(REXUI_PLATFORM_SOURCES
-        surface_gnulinux.cpp
-    )
-endif()"""
-old_platform_sources_upstream = """if(WIN32)
-    set(REXUI_PLATFORM_SOURCES
-        surface_win.cpp
-    )
-elseif(APPLE)
-    set(REXUI_PLATFORM_SOURCES
-        surface_mac.cpp
-    )
-else()
-    set(REXUI_PLATFORM_SOURCES
-        surface_gnulinux.cpp
-    )
-endif()"""
-new_platform_sources = """if(WIN32)
+if "surface_android.cpp" not in cmake:
+    start_marker = "# Platform-specific sources"
+    start = cmake.find(start_marker)
+    if start < 0:
+        start_marker = "# Platform-specific sources (windowing itself is SDL3, platform-independent)"
+        start = cmake.find(start_marker)
+    if start < 0:
+        raise SystemExit("ERRO: secao de fontes de plataforma nao encontrada no CMakeLists.txt.")
+    end_match = re.search(r"(?m)^endif\(\)\s*$", cmake[start:])
+    if not end_match:
+        raise SystemExit("ERRO: fim da selecao de fontes de plataforma nao encontrado.")
+    end = start + end_match.end()
+    replacement = """# Platform-specific sources; Android uses SDL3's native window.
+if(WIN32)
     set(REXUI_PLATFORM_SOURCES
         surface_win.cpp
     )
@@ -64,22 +53,7 @@ else()
         surface_gnulinux.cpp
     )
 endif()"""
-if "surface_android.cpp" not in cmake:
-    if old_platform_sources not in cmake:
-        raise SystemExit("ERRO: selecao de fontes de plataforma do rexui mudou; patch interrompido.")
-    cmake = cmake.replace(old_platform_sources, new_platform_sources, 1)
-
-if "target_link_libraries(rexui PUBLIC android)" not in cmake:
-    marker = "if(ANDROID)\n"
-    dependency_pos = cmake.find("# Platform-specific dependencies")
-    if dependency_pos < 0:
-        raise SystemExit("ERRO: secao de dependencias de plataforma nao encontrada.")
-    branch_pos = cmake.find(marker, dependency_pos)
-    if branch_pos >= 0:
-        insert_pos = branch_pos + len(marker)
-        cmake = cmake[:insert_pos] + "    target_link_libraries(rexui PUBLIC android)\n" + cmake[insert_pos:]
-    else:
-        raise SystemExit("ERRO: ramo Android de dependencias nao encontrado.")
+    cmake = cmake[:start] + replacement + cmake[end:]
 cmake_path.write_text(cmake, encoding="utf-8")
 
 window = window_path.read_text(encoding="utf-8")
