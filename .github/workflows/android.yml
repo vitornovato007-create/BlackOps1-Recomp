@@ -784,6 +784,150 @@ jobs:
           ls -lh "$APK"
           file "$APK"
 
+          echo "Verificando bibliotecas nativas dentro do APK..."
+          unzip -l "$APK" | grep -E 'lib/arm64-v8a/.*\.so
+      - name: Salvar diagnostico do ambiente
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p android-diagnostic
+
+          {
+            echo "Diagnostico do ambiente Android"
+            date -u
+            java -version 2>&1 || true
+            python --version 2>&1 || true
+            gradle --version 2>&1 || true
+            echo "ANDROID_HOME=${ANDROID_HOME:-nao definido}"
+            ls "${ANDROID_HOME:-/nonexistent}/ndk" 2>&1 || true
+            cmake --version 2>&1 || true
+
+            echo "APKs encontrados:"
+            find android/app/build/outputs \
+              -type f -name "*.apk" -print 2>&1 || true
+
+            echo "Arquivos XISO encontrados:"
+            find thirdparty android/app/src/main/cpp \
+              -maxdepth 5 -iname '*xiso*' -type f -print 2>&1 || true
+          } > android-diagnostic/environment.txt
+
+      - name: Publicar diagnosticos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build-diagnostics
+          path: android-diagnostic/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Publicar APK ARM64
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BlackOps1-Android-ARM64-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+ || true
+
+          if ! unzip -l "$APK" | grep -qE 'lib/arm64-v8a/libSDL3\.so
+      - name: Salvar diagnostico do ambiente
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p android-diagnostic
+
+          {
+            echo "Diagnostico do ambiente Android"
+            date -u
+            java -version 2>&1 || true
+            python --version 2>&1 || true
+            gradle --version 2>&1 || true
+            echo "ANDROID_HOME=${ANDROID_HOME:-nao definido}"
+            ls "${ANDROID_HOME:-/nonexistent}/ndk" 2>&1 || true
+            cmake --version 2>&1 || true
+
+            echo "APKs encontrados:"
+            find android/app/build/outputs \
+              -type f -name "*.apk" -print 2>&1 || true
+
+            echo "Arquivos XISO encontrados:"
+            find thirdparty android/app/src/main/cpp \
+              -maxdepth 5 -iname '*xiso*' -type f -print 2>&1 || true
+          } > android-diagnostic/environment.txt
+
+      - name: Publicar diagnosticos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build-diagnostics
+          path: android-diagnostic/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Publicar APK ARM64
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BlackOps1-Android-ARM64-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+; then
+            echo "::error::libSDL3.so ausente do APK ARM64. O aplicativo nao pode iniciar pela SDLActivity."
+            exit 1
+          fi
+
+          if ! unzip -l "$APK" | grep -qE 'lib/arm64-v8a/libblackops1_android\.so
+      - name: Salvar diagnostico do ambiente
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p android-diagnostic
+
+          {
+            echo "Diagnostico do ambiente Android"
+            date -u
+            java -version 2>&1 || true
+            python --version 2>&1 || true
+            gradle --version 2>&1 || true
+            echo "ANDROID_HOME=${ANDROID_HOME:-nao definido}"
+            ls "${ANDROID_HOME:-/nonexistent}/ndk" 2>&1 || true
+            cmake --version 2>&1 || true
+
+            echo "APKs encontrados:"
+            find android/app/build/outputs \
+              -type f -name "*.apk" -print 2>&1 || true
+
+            echo "Arquivos XISO encontrados:"
+            find thirdparty android/app/src/main/cpp \
+              -maxdepth 5 -iname '*xiso*' -type f -print 2>&1 || true
+          } > android-diagnostic/environment.txt
+
+      - name: Publicar diagnosticos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build-diagnostics
+          path: android-diagnostic/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Publicar APK ARM64
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BlackOps1-Android-ARM64-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+; then
+            echo "::error::libblackops1_android.so ausente do APK ARM64."
+            exit 1
+          fi
+
+          echo "OK: libSDL3.so e libblackops1_android.so estao no APK ARM64."
+
       - name: Salvar diagnostico do ambiente
         if: always()
         shell: bash
