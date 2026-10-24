@@ -684,12 +684,20 @@ jobs:
               if marker not in content:
                   raise SystemExit("ERRO: ponto de insercao no CMakeLists.txt do rexcore nao encontrado.")
               content = content.replace(marker, block + marker, 1)
-              path.write_text(content, encoding="utf-8")
+          if "target_link_libraries(rexcore PRIVATE SDL3::SDL3)" not in content:
+              content = content.replace(
+                  "target_sources(rexcore PRIVATE filesystem_android.cpp)",
+                  "target_sources(rexcore PRIVATE filesystem_android.cpp)\\n    target_link_libraries(rexcore PRIVATE SDL3::SDL3)",
+                  1,
+              )
+          path.write_text(content, encoding="utf-8")
 
           verify = path.read_text(encoding="utf-8")
           if "target_sources(rexcore PRIVATE filesystem_android.cpp)" not in verify:
               raise SystemExit("ERRO: a integracao Android nao foi adicionada ao alvo rexcore.")
-          print("Filesystem Android integrado ao alvo rexcore.")
+          if "target_link_libraries(rexcore PRIVATE SDL3::SDL3)" not in verify:
+              raise SystemExit("ERRO: dependencias de cabecalho SDL3 nao foram adicionadas ao rexcore.")
+          print("Filesystem Android integrado ao alvo rexcore com SDL3.")
           PYTHON
 
           grep -n -A4 -B2 'filesystem_android.cpp' "$CMAKE_FILE"
