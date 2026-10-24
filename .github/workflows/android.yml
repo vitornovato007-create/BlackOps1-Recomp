@@ -125,7 +125,7 @@ jobs:
           # these compatibility changes here instead of relying on repo edits.
           text = numeric.read_text(encoding="utf-8")
           text, include_count = re.subn(
-              r"(?m)^#if REX_PLATFORM_MAC\\s*$",
+              r"(?m)^#if REX_PLATFORM_MAC\s*$",
               "#if REX_PLATFORM_MAC || REX_PLATFORM_ANDROID || defined(ANDROID) || defined(__ANDROID__)",
               text,
           )
