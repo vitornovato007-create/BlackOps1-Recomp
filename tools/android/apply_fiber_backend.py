@@ -53,6 +53,13 @@ if(UNIX AND NOT ANDROID)
 endif()
 """
 if "target_sources(rexcore PRIVATE fiber_posix.cpp)" not in text:
+    # Recompute the end after removing the source-list entry, because that
+    # replacement changes the file length.
+    platform_start = text.find(platform_marker)
+    platform_end_match = re.search(r"(?m)^endif\\(\\)\\s*$", text[platform_start:])
+    if not platform_end_match:
+        raise SystemExit("ERRO: nao foi possivel recalcular o fim da selecao de fontes.")
+    platform_end = platform_start + platform_end_match.end()
     text = text[:platform_end] + conditional + text[platform_end:]
 
 # Android uses the custom AAPCS64 fiber switch backend.
