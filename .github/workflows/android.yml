@@ -111,6 +111,12 @@ jobs:
           set -euo pipefail
           python3 tools/android/apply_fiber_backend.py
 
+      - name: Aplicar backend de janela e surface Android
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/android/apply_ui_backend.py
+
       - name: Aplicar e verificar timer_queue.cpp compativel com Android
         shell: bash
         run: |
