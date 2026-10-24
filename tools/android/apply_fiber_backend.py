@@ -25,11 +25,18 @@ text = cmake.read_text(encoding="utf-8")
 # Android needs the normal POSIX sources (threads, filesystem, dynamic library,
 # memory, etc.). Only fiber_posix.cpp is incompatible with Bionic, so keep it
 # out of the shared UNIX list and add it separately for non-Android UNIX.
-text = text.replace(
-    "elseif(UNIX AND NOT ANDROID)\n    # Linux and macOS/Darwin share the POSIX sources;",
-    "elseif(UNIX)\n    # Linux, macOS/Darwin, and Android share the POSIX sources except fibers;",
-    1,
+# Match the condition independently of upstream comments/formatting.
+text, replacements = re.subn(
+    r"(?m)^elseif\(UNIX AND NOT ANDROID\)\s*$",
+    "elseif(UNIX)",
+    text,
+    count=1,
 )
+if replacements != 1:
+    # Some ReXGlue revisions use a plain UNIX branch already. Accept that
+    # state, but fail clearly if neither expected form is present.
+    if not re.search(r"(?m)^elseif\(UNIX\)\s*$", text):
+        raise SystemExit("ERRO: ramo UNIX de fontes POSIX nao encontrado no CMakeLists.txt.")
 
 platform_marker = "# Platform-specific sources"
 platform_start = text.find(platform_marker)
