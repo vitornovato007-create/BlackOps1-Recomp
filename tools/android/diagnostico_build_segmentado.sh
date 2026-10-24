@@ -54,30 +54,41 @@ else
 fi
 end_section 1
 
-section 2 "SUPORTE C++20: jthread E stop_token"
-if [[ -n "${CLANGXX:-}" && -x "$CLANGXX" ]]; then
-  TMP_CPP="$(mktemp --suffix=.cpp)"
-  TMP_ERR="$(mktemp)"
-  cat > "$TMP_CPP" <<'CPP'
+section 2 "SUPORTE C++20/C++23: jthread E stop_token"
+if [[ -n "${CLANGXX:-}" && -x "${CLANGXX}" && -n "${SYSROOT:-}" && -d "${SYSROOT}" ]]; then
+  echo "--- Identidade do compilador e alvo Android ---"
+  "${CLANGXX}" --target=aarch64-linux-android29 --sysroot="${SYSROOT}" -stdlib=libc++ -dM -E -x c++ /dev/null 2>/dev/null | grep -E '^#define (__ANDROID__|__cplusplus|_LIBCPP_VERSION|_LIBCPP_HAS_NO_THREADS|__cpp_lib_jthread)' || true
+  echo "--- Cabeçalho thread selecionado ---"
+  printf '#include <thread>\n' | "${CLANGXX}" --target=aarch64-linux-android29 --sysroot="${SYSROOT}" -stdlib=libc++ -std=c++23 -pthread -E -H -x c++ - >/dev/null 2>&1 || true
+  for STANDARD in c++20 c++23; do
+    TMP_CPP="$(mktemp --suffix=.cpp)"
+    TMP_ERR="$(mktemp)"
+    cat > "$TMP_CPP" <<'CPP'
+#include <version>
 #include <thread>
 #include <stop_token>
+#ifndef __cpp_lib_jthread
+#error "__cpp_lib_jthread nao definido pela biblioteca padrao"
+#endif
 int main() {
   std::jthread worker([](std::stop_token token) { (void)token.stop_requested(); });
   worker.request_stop();
   return 0;
 }
 CPP
-  if "$CLANGXX" --target=aarch64-linux-android29 --sysroot="$SYSROOT" -std=c++20 -fsyntax-only "$TMP_CPP" >"$TMP_ERR" 2>&1; then
-    echo "[OK] O compilador aceita std::jthread e std::stop_token em C++20."
-  else
-    echo "[FALHA] Teste isolado de std::jthread/std::stop_token falhou:"
-    sed -n '1,100p' "$TMP_ERR"
-  fi
-  rm -f "$TMP_CPP" "$TMP_ERR"
+    echo "--- Teste com -std=${STANDARD} ---"
+    if "${CLANGXX}" --target=aarch64-linux-android29 --sysroot="${SYSROOT}" -stdlib=libc++ "-std=${STANDARD}" -pthread -fsyntax-only "$TMP_CPP" >"$TMP_ERR" 2>&1; then
+      echo "[OK] ${STANDARD}: std::jthread e std::stop_token disponíveis."
+    else
+      echo "[FALHA] ${STANDARD}: teste isolado falhou:"
+      sed -n '1,100p' "$TMP_ERR"
+    fi
+    rm -f "$TMP_CPP" "$TMP_ERR"
+  done
 else
-  echo "[INDETERMINADO] clang++ do NDK não localizado."
+  echo "[INDETERMINADO] clang++ do NDK ou sysroot não localizado."
 fi
-end_section 2
+
 
 section 3 "PLATAFORMA E MACROS DO REXGLUE"
 for file in rexglue-sdk/include/rex/platform.h rexglue-sdk/CMakeLists.txt rexglue-sdk/src/core/timer_queue.cpp; do
