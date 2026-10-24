@@ -1,4 +1,3 @@
-
 /**
  ******************************************************************************
  * Xenia : Xbox 360 Emulator Research Project                                 *
@@ -112,13 +111,14 @@ using XSystemClock = detail::NtSystemClock<detail::Domain::Guest>;
 
 namespace std::chrono {
 
-#if defined(__APPLE__) || defined(__ANDROID__)
+// Android NDK toolchains may not expose clock_time_conversion / clock_cast in
+// their libc++ headers yet. Detect Android using both the normalized ReXGlue
+// platform switch and the CMake/compiler macros so this fallback is not skipped
+// when only ANDROID is defined by the toolchain.
+#if REX_PLATFORM_MAC || REX_PLATFORM_ANDROID || defined(ANDROID) || defined(__ANDROID__)
 
-// Compatibility fallback for standard libraries that do not expose
-// clock_time_conversion and clock_cast.
-//
-// If the selected standard library already defines these names, this fallback
-// may conflict and must be adjusted to match that library's implementation.
+// Compatibility fallback for standard libraries that do not expose these names.
+// This block must remain limited to platforms that need the compatibility types.
 template <class DestClock, class SourceClock>
 struct clock_time_conversion {};
 
