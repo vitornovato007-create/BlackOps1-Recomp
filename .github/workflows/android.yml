@@ -244,6 +244,7 @@ jobs:
           # Android must not require Linux desktop X11/Wayland packages.
           if(ANDROID)
               # SDL3 provides Android platform integration.
+              target_link_libraries(rexui PUBLIC android)
           elseif(UNIX AND NOT APPLE)
               find_package(PkgConfig REQUIRED)
 
