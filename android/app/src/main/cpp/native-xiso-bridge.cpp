@@ -6,7 +6,7 @@
 
 // Nome definido no CMakeLists.txt:
 // main=extract_xiso_cli_main
-extern "C" int blackops_extract_xiso_main(int argc, char **argv);
+extern "C" int extract_xiso_cli_main(int argc, char **argv);
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_blackops1_recomp_importer_NativeXisoBridge_isAvailable(
