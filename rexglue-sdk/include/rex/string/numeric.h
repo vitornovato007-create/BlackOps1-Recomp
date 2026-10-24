@@ -26,7 +26,10 @@
 #include <rex/string/utf8.h>
 #include <rex/vec128.h>
 
-#if REX_PLATFORM_MAC || REX_PLATFORM_ANDROID
+// Some Android CMake toolchains define ANDROID but do not consistently expose
+// __ANDROID__ to every consumer translation unit. REX_PLATFORM_ANDROID is
+// normalized by rex/platform.h; include the CMake macro as a defensive fallback.
+#if REX_PLATFORM_MAC || REX_PLATFORM_ANDROID || defined(ANDROID) || defined(__ANDROID__)
 #include <locale.h>
 #endif
 
@@ -104,6 +107,7 @@ inline T ifs(const std::string_view value, bool force_hex) {
   }
   // TODO(gibbed): do something more with errors?
   auto [p, error] = std::from_chars(range.data(), range.data() + range.size(), result, base);
+  (void)p;
   if (error != std::errc()) {
     assert_always();
     return T();
@@ -114,16 +118,15 @@ inline T ifs(const std::string_view value, bool force_hex) {
   return result;
 }
 
-#if REX_PLATFORM_MAC || REX_PLATFORM_ANDROID
+#if REX_PLATFORM_MAC || REX_PLATFORM_ANDROID || defined(ANDROID) || defined(__ANDROID__)
 template <typename T>
 inline std::from_chars_result portable_float_from_chars(const char* first, const char* last,
                                                         T& value) {
   static_assert(std::is_same_v<T, float> || std::is_same_v<T, double>);
 
-  // AppleClang's libc++ does not provide floating-point std::from_chars on all
-  // supported SDK versions. Match from_chars semantics with a C-locale parser:
-  // no leading whitespace or '+', no global locale dependency, and distinct
-  // invalid-input and range errors.
+  // Use a C-locale parser on platforms where floating-point std::from_chars
+  // is unavailable. Preserve the relevant from_chars behavior: no leading
+  // whitespace or '+', no global locale dependency, and range-error reporting.
   if (first == last || *first == '+' || *first == ' ' || *first == '\f' || *first == '\n' ||
       *first == '\r' || *first == '\t' || *first == '\v') {
     return {first, std::errc::invalid_argument};
@@ -189,11 +192,13 @@ inline T fpfs(const std::string_view value, bool force_hex) {
     }
     std::memcpy(&result, &pun, sizeof(PUN));
   } else {
-#if REX_PLATFORM_MAC || REX_PLATFORM_ANDROID
+#if REX_PLATFORM_MAC || REX_PLATFORM_ANDROID || defined(ANDROID) || defined(__ANDROID__)
     auto [p, error] = portable_float_from_chars(range.data(), range.data() + range.size(), result);
+    (void)p;
 #else
     auto [p, error] = std::from_chars(range.data(), range.data() + range.size(), result,
                                       std::chars_format::general);
+    (void)p;
 #endif
     // TODO(gibbed): do something more with errors?
     if (error != std::errc()) {
@@ -210,8 +215,8 @@ inline T fpfs(const std::string_view value, bool force_hex) {
 }  // namespace detail
 
 // The single definition of what counts as a true boolean string. Config files,
-// the command line, cvar change callbacks and the settings UI all funnel
-// through here so a value accepted in one place can't be rejected in another.
+// the command line, cvar change callbacks and the settings UI all funnel through
+// here so a value accepted in one place can't be rejected in another.
 template <>
 inline bool from_string<bool>(const std::string_view value, bool force_hex) {
   (void)force_hex;
@@ -316,7 +321,7 @@ inline vec128_t from_string<vec128_t>(const std::string_view value, bool force_h
         assert_always();
         return vec128_t();
       }
-#if REX_PLATFORM_MAC || REX_PLATFORM_ANDROID
+#if REX_PLATFORM_MAC || REX_PLATFORM_ANDROID || defined(ANDROID) || defined(__ANDROID__)
       auto result = detail::portable_float_from_chars(p, end, v.f32[i]);
 #else
       auto result = std::from_chars(p, end, v.f32[i], std::chars_format::general);
