@@ -418,6 +418,17 @@ jobs:
           print(report.read_text(encoding="utf-8"))
           PYTHON
 
+      - name: Diagnosticos segmentados antes da compilacao
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p android-diagnostic
+          bash tools/android/diagnostico_build_segmentado.sh 2>&1 | tee android-diagnostic/diagnostico-build-segmentado.txt
+          diagnostic_status=${PIPESTATUS[0]}
+          if [ "$diagnostic_status" -ne 0 ]; then
+            echo "::warning::O script de diagnóstico terminou com código $diagnostic_status; consulte os blocos COMEÇO/FIM ANÁLISE."
+          fi
+
       - name: Compilar APK ARM64
         shell: bash
         run: |
