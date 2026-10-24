@@ -442,14 +442,14 @@ jobs:
 
           # Bionic does not implement robust pthread mutexes. Keep the ordinary
           # std::mutex path on Android; robust recovery remains enabled on Linux.
-          robust_guard = "#if REX_PLATFORM_LINUX\\n"
+          robust_guard = "#if REX_PLATFORM_LINUX\n"
           replacements = [
               (robust_guard + "    // Use robust mutexes so waits can recover if owner thread terminates.",
-               "#if REX_PLATFORM_LINUX && !defined(__ANDROID__)\\n    // Use robust mutexes so waits can recover if owner thread terminates."),
+               "#if REX_PLATFORM_LINUX && !defined(__ANDROID__)\n    // Use robust mutexes so waits can recover if owner thread terminates."),
               (robust_guard + "    auto native_mutex = static_cast<pthread_mutex_t*>(mutex_.native_handle());",
-               "#if REX_PLATFORM_LINUX && !defined(__ANDROID__)\\n    auto native_mutex = static_cast<pthread_mutex_t*>(mutex_.native_handle());"),
+               "#if REX_PLATFORM_LINUX && !defined(__ANDROID__)\n    auto native_mutex = static_cast<pthread_mutex_t*>(mutex_.native_handle());"),
               (robust_guard + "        auto native_mutex = static_cast<pthread_mutex_t*>(handles[i]->mutex_.native_handle());",
-               "#if REX_PLATFORM_LINUX && !defined(__ANDROID__)\\n        auto native_mutex = static_cast<pthread_mutex_t*>(handles[i]->mutex_.native_handle());"),
+               "#if REX_PLATFORM_LINUX && !defined(__ANDROID__)\n        auto native_mutex = static_cast<pthread_mutex_t*>(handles[i]->mutex_.native_handle());"),
           ]
           for old, new in replacements:
               if old in text:
