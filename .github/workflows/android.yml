@@ -703,6 +703,45 @@ jobs:
           grep -n -A4 -B2 'filesystem_android.cpp' "$CMAKE_FILE"
           grep -n -E 'AndroidInitialize|IsAndroidContentUri|OpenAndroidContentFileDescriptor' "$TARGET"
 
+      - name: Corrigir selecao do app registrado no ReXGlue para Android
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          FILE="rexglue-sdk/src/ui/windowed_app_main_sdl.cpp"
+          test -f "$FILE"
+
+          python3 - "$FILE" <<'PYTHON'
+          import sys
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          content = path.read_text(encoding="utf-8")
+          old = "    std::unique_ptr<rex::ui::WindowedApp> app = rex::ui::GetWindowedAppCreator()(app_context);"
+          new = """#if REX_PLATFORM_ANDROID
+              auto creator = rex::ui::WindowedApp::GetCreator("blackops1");
+              if (!creator) {
+                rex::XELOGE("Android app registration 'blackops1' was not found.");
+                return EXIT_FAILURE;
+              }
+              std::unique_ptr<rex::ui::WindowedApp> app = creator(app_context);
+          #else
+              std::unique_ptr<rex::ui::WindowedApp> app = rex::ui::GetWindowedAppCreator()(app_context);
+          #endif"""
+          if "WindowedApp::GetCreator(\"blackops1\")" not in content:
+              if old not in content:
+                  raise SystemExit("ERRO: chamada original GetWindowedAppCreator nao encontrada.")
+              content = content.replace(old, new, 1)
+              path.write_text(content, encoding="utf-8")
+
+          check = path.read_text(encoding="utf-8")
+          if "WindowedApp::GetCreator(\"blackops1\")" not in check:
+              raise SystemExit("ERRO: selecao do app Android nao aplicada.")
+          print("Android seleciona o app registrado blackops1; desktop preservado.")
+          PYTHON
+
+          grep -n -A8 -B2 'WindowedApp::GetCreator' "$FILE"
+
       - name: Compilar APK ARM64
         shell: bash
         run: |
