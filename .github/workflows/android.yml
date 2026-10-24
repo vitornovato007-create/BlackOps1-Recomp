@@ -105,6 +105,12 @@ jobs:
           git -C rexglue-sdk log -1 --oneline
           git -C rexglue-sdk submodule status --recursive
 
+      - name: Aplicar backend de fibers Android ARM64
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/android/apply_fiber_backend.py
+
       - name: Aplicar e verificar timer_queue.cpp compativel com Android
         shell: bash
         run: |
