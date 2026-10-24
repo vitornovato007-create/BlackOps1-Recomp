@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Apply the Android ARM64 fiber backend to the temporary ReXGlue checkout."""
 from pathlib import Path
+import re
 
 root = Path("rexglue-sdk")
 patch_root = Path("patches/android")
@@ -20,23 +21,54 @@ header_dst.write_text(header_src.read_text(encoding="utf-8"), encoding="utf-8")
 switch_dst.write_text(switch_src.read_text(encoding="utf-8"), encoding="utf-8")
 
 text = cmake.read_text(encoding="utf-8")
-if "fiber_switch.cpp" not in text:
+
+# Android needs the normal POSIX sources (threads, filesystem, dynamic library,
+# memory, etc.). Only fiber_posix.cpp is incompatible with Bionic, so keep it
+# out of the shared UNIX list and add it separately for non-Android UNIX.
+text = text.replace(
+    "elseif(UNIX AND NOT ANDROID)\n    # Linux and macOS/Darwin share the POSIX sources;",
+    "elseif(UNIX)\n    # Linux, macOS/Darwin, and Android share the POSIX sources except fibers;",
+    1,
+)
+
+platform_marker = "# Platform-specific sources"
+platform_start = text.find(platform_marker)
+if platform_start < 0:
+    raise SystemExit("ERRO: secao de fontes de plataforma nao encontrada no CMakeLists.txt.")
+
+platform_end_match = re.search(r"(?m)^endif\(\)\s*$", text[platform_start:])
+if not platform_end_match:
+    raise SystemExit("ERRO: fim da selecao de fontes de plataforma nao encontrado.")
+platform_end = platform_start + platform_end_match.end()
+platform_block = text[platform_start:platform_end]
+
+# Remove fiber_posix.cpp from the shared UNIX source list.
+platform_block = re.sub(r"(?m)^\s*fiber_posix\.cpp\s*\n", "", platform_block)
+text = text[:platform_start] + platform_block + text[platform_end:]
+
+# Add the POSIX fiber source only on non-Android platforms, exactly once.
+conditional = """\n# POSIX ucontext fibers are not available on Android Bionic.
+if(UNIX AND NOT ANDROID)
+    target_sources(rexcore PRIVATE fiber_posix.cpp)
+endif()
+"""
+if "target_sources(rexcore PRIVATE fiber_posix.cpp)" not in text:
+    text = text[:platform_end] + conditional + text[platform_end:]
+
+# Android uses the custom AAPCS64 fiber switch backend.
+if "target_sources(rexcore PRIVATE fiber_switch.cpp)" not in text:
     marker = "add_library(rex::core ALIAS rexcore)\n"
     if marker not in text:
         raise SystemExit("ERRO: marcador do rexcore nao encontrado no CMakeLists.txt.")
     text = text.replace(
         marker,
-        marker + "\nif(ANDROID)\n    # Android Bionic nao fornece makecontext/swapcontext.\n"
-        "    target_sources(rexcore PRIVATE fiber_switch.cpp)\nendif()\n",
+        marker + "\nif(ANDROID)\n"
+        "    # Android Bionic nao fornece makecontext/swapcontext.\n"
+        "    target_sources(rexcore PRIVATE fiber_switch.cpp)\n"
+        "endif()\n",
         1,
     )
-# Ensure Android does not also compile the POSIX backend through elseif(UNIX).
-old = "elseif(UNIX)\n    # Linux and macOS/Darwin share the POSIX sources;"
-new = "elseif(UNIX AND NOT ANDROID)\n    # Linux and macOS/Darwin share the POSIX sources;"
-if old in text:
-    text = text.replace(old, new, 1)
-elif "elseif(UNIX AND NOT ANDROID)" not in text:
-    raise SystemExit("ERRO: ramo UNIX esperado nao encontrado no CMakeLists.txt.")
+
 cmake.write_text(text, encoding="utf-8")
 
 text = posix.read_text(encoding="utf-8")
@@ -48,7 +80,7 @@ elif new_guard not in text:
     raise SystemExit("ERRO: guard de plataforma esperado nao encontrado em fiber_posix.cpp.")
 posix.write_text(text, encoding="utf-8")
 
-# Verify backend selection and guards before allowing the build to continue.
+# Verify the platform source list retains all POSIX files except fiber_posix.cpp.
 h = header_dst.read_text(encoding="utf-8")
 c = cmake.read_text(encoding="utf-8")
 p = posix.read_text(encoding="utf-8")
@@ -56,12 +88,13 @@ s = switch_dst.read_text(encoding="utf-8")
 checks = {
     "header has Android ARM64 backend": "REX_PLATFORM_ANDROID && REX_ARCH_ARM64" in h,
     "switch implementation exists": "rex_fiber_swap" in s and "rex_fiber_trampoline" in s,
-    "CMake includes switch backend": "target_sources(rexcore PRIVATE fiber_switch.cpp)" in c,
-    "CMake excludes Android from UNIX backend": "elseif(UNIX AND NOT ANDROID)" in c,
-    "POSIX source excludes Android": new_guard in p,
+    "CMake includes Android switch backend": "target_sources(rexcore PRIVATE fiber_switch.cpp)" in c,
+    "shared POSIX source branch remains enabled for Android": "elseif(UNIX)\n    # Linux, macOS/Darwin, and Android share the POSIX sources except fibers;" in c,
+    "POSIX fiber is limited to non-Android UNIX": "if(UNIX AND NOT ANDROID)\n    target_sources(rexcore PRIVATE fiber_posix.cpp)" in c,
+    "Android custom backend excludes POSIX fiber implementation": new_guard in p,
 }
 for label, ok in checks.items():
     print(("[OK] " if ok else "[ERRO] ") + label)
 if not all(checks.values()):
     raise SystemExit("ERRO: verificacao do backend de fibers Android falhou.")
-print("Backend de fibers Android ARM64 aplicado.")
+print("Backend de fibers Android ARM64 aplicado sem excluir os demais arquivos POSIX.")
