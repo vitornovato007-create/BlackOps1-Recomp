@@ -69,13 +69,15 @@ if(WIN32)
     set(REXUI_PLATFORM_SOURCES
         surface_win.cpp
     )
+elseif(ANDROID)
+    set(REXUI_PLATFORM_SOURCES
+        surface_android.cpp
+    )
 elseif(APPLE)
     set(REXUI_PLATFORM_SOURCES
         surface_mac.cpp
     )
 else()
-    # Keep the existing Linux surface source.
-    # Its compatibility with Android must be verified separately.
     set(REXUI_PLATFORM_SOURCES
         surface_gnulinux.cpp
     )
@@ -156,7 +158,8 @@ endif()
 # Platform-specific dependencies.
 # Android uses SDL3 and must not require Linux desktop X11/Wayland packages.
 if(ANDROID)
-    # No X11 or Wayland dependencies for Android.
+    # Android native-window reference counting is provided by libandroid.
+    target_link_libraries(rexui PUBLIC android)
 elseif(UNIX AND NOT APPLE)
     find_package(PkgConfig REQUIRED)
 

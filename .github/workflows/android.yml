@@ -16,6 +16,24 @@ jobs:
       - name: Baixar repositorio
         uses: actions/checkout@v4
 
+      - name: Diagnostico estatico unificado
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p android-diagnostic
+          python3 tools/diagnostico_completo.py 2>&1 | tee android-diagnostic/diagnostico-completo.txt
+          diagnostic_status=${PIPESTATUS[0]}
+          if [ "$diagnostic_status" -ne 0 ]; then
+            echo "::error::O diagnostico estatico encontrou bloqueadores."
+            exit "$diagnostic_status"
+          fi
+          python3 scripts/auditar_gerados.py 2>&1 | tee android-diagnostic/auditoria-gerados.txt
+          audit_status=${PIPESTATUS[0]}
+          if [ "$audit_status" -ne 0 ]; then
+            echo "::error::A auditoria de arquivos gerados falhou."
+            exit "$audit_status"
+          fi
+
       - name: Verificar estrutura do projeto
         shell: bash
         run: |
@@ -87,6 +105,114 @@ jobs:
           git -C rexglue-sdk log -1 --oneline
           git -C rexglue-sdk submodule status --recursive
 
+      - name: Aplicar backend de fibers Android ARM64
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/android/apply_fiber_backend.py
+
+      - name: Aplicar backend de janela e surface Android
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/android/apply_ui_backend.py
+
+      - name: Aplicar e verificar timer_queue.cpp compativel com Android
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SOURCE="patches/android/timer_queue.cpp"
+          TARGET="rexglue-sdk/src/core/timer_queue.cpp"
+
+          if [ ! -f "$SOURCE" ]; then
+            echo "::error file=$SOURCE::Patch persistente do TimerQueue nao encontrado."
+            exit 1
+          fi
+          if [ ! -f "$TARGET" ]; then
+            echo "::error file=$TARGET::TimerQueue do checkout ReXGlue nao encontrado."
+            exit 1
+          fi
+
+          cp "$SOURCE" "$TARGET"
+
+          if grep -n -E 'std::jthread|std::stop_token|request_stop\\(' "$TARGET"; then
+            echo "::error file=$TARGET::O TimerQueue ainda contem APIs jthread/stop_token incompatíveis com o compilador Android usado."
+            exit 1
+          fi
+
+          grep -q 'std::thread dispatch_thread_' "$TARGET"
+          grep -q 'std::atomic<bool> stop_requested_' "$TARGET"
+          grep -q 'dispatch_thread_.join()' "$TARGET"
+
+          echo "Patch aplicado e verificado no SDK que sera compilado:"
+          grep -n -E 'std::thread dispatch_thread_|std::atomic<bool> stop_requested_|dispatch_thread_.join' "$TARGET"
+
+      - name: Aplicar compatibilidade C++ do ReXGlue para Android NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import re
+
+          numeric = Path("rexglue-sdk/include/rex/string/numeric.h")
+          chrono = Path("rexglue-sdk/include/rex/chrono/chrono.h")
+
+          for path in (numeric, chrono):
+              if not path.is_file():
+                  raise SystemExit(f"::error file={path}::Cabecalho ReXGlue ausente.")
+          
+          # The upstream SDK is freshly cloned on every workflow run, so apply
+          # these compatibility changes here instead of relying on repo edits.
+          text = numeric.read_text(encoding="utf-8")
+          text, include_count = re.subn(
+              r"(?m)^#if REX_PLATFORM_MAC\s*$",
+              "#if REX_PLATFORM_MAC || REX_PLATFORM_ANDROID || defined(ANDROID) || defined(__ANDROID__)",
+              text,
+          )
+          if include_count < 3:
+              raise SystemExit(
+                  "ERRO: numeric.h mudou de formato; esperava ao menos 3 "
+                  "guards de plataforma para float from_chars."
+              )
+          numeric.write_text(text, encoding="utf-8")
+
+          text = chrono.read_text(encoding="utf-8")
+          old_guard = "#ifdef __APPLE__"
+          new_guard = "#if defined(__APPLE__) || defined(__ANDROID__) || defined(ANDROID)"
+          if old_guard not in text:
+              if new_guard not in text:
+                  raise SystemExit(
+                      "ERRO: chrono.h nao contem o guard Apple esperado; "
+                      "nao foi aplicado fallback automaticamente."
+                  )
+          else:
+              text = text.replace(old_guard, new_guard, 1)
+              chrono.write_text(text, encoding="utf-8")
+
+          # Verify the patch actually landed in the fresh checkout.
+          numeric_text = numeric.read_text(encoding="utf-8")
+          chrono_text = chrono.read_text(encoding="utf-8")
+          if "portable_float_from_chars" not in numeric_text:
+              raise SystemExit("ERRO: fallback de float nao encontrado em numeric.h.")
+          if "defined(__ANDROID__)" not in numeric_text:
+              raise SystemExit("ERRO: guard Android ausente em numeric.h.")
+          if "defined(__ANDROID__)" not in chrono_text and "defined(ANDROID)" not in chrono_text:
+              raise SystemExit("ERRO: fallback chrono nao foi habilitado para Android.")
+
+          print("Compatibilidade Android aplicada e verificada:")
+          print(f"  {numeric}: {include_count} guards ajustados")
+          print(f"  {chrono}: fallback chrono habilitado para Android")
+          PYTHON
+
+          echo "Confirmando alteracoes aplicadas:"
+          grep -n -E 'portable_float_from_chars|REX_PLATFORM_MAC.*ANDROID|defined\\(__ANDROID__\\)' \
+            rexglue-sdk/include/rex/string/numeric.h
+          grep -n -E 'defined\\(__ANDROID__\\)|defined\\(ANDROID\\)|clock_time_conversion' \
+            rexglue-sdk/include/rex/chrono/chrono.h | head -20
+
       - name: Corrigir dependencias Linux no ReXGlue para Android
         shell: bash
         run: |
@@ -118,6 +244,7 @@ jobs:
           # Android must not require Linux desktop X11/Wayland packages.
           if(ANDROID)
               # SDL3 provides Android platform integration.
+              target_link_libraries(rexui PUBLIC android)
           elseif(UNIX AND NOT APPLE)
               find_package(PkgConfig REQUIRED)
 
@@ -172,6 +299,102 @@ jobs:
                   ))
               ]
           )
+          PYTHON
+
+      - name: Remover bibliotecas POSIX indisponiveis no Android
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          FILE="rexglue-sdk/src/core/CMakeLists.txt"
+          if [ ! -f "$FILE" ]; then
+            echo "::error file=$FILE::CMakeLists.txt do rexcore nao encontrado."
+            exit 1
+          fi
+
+          python - "$FILE" <<'PYTHON'
+          import sys
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          content = path.read_text(encoding="utf-8")
+          old = """if(APPLE)
+              target_link_libraries(rexcore PRIVATE pthread)
+          elseif(UNIX)
+              target_link_libraries(rexcore PRIVATE pthread rt dl)
+          endif()"""
+          new = """if(APPLE)
+              target_link_libraries(rexcore PRIVATE pthread)
+          elseif(ANDROID)
+              # Bionic provides pthread and realtime APIs without separate
+              # -lpthread/-lrt libraries; keep libdl for dlopen/dlsym.
+              target_link_libraries(rexcore PRIVATE dl)
+          elseif(UNIX)
+              target_link_libraries(rexcore PRIVATE pthread rt dl)
+          endif()"""
+          if new not in content:
+              if old not in content:
+                  raise SystemExit("ERRO: bloco de link POSIX do rexcore nao corresponde ao esperado.")
+              content = content.replace(old, new, 1)
+              path.write_text(content, encoding="utf-8")
+          if "elseif(ANDROID)" not in content or "target_link_libraries(rexcore PRIVATE dl)" not in content:
+              raise SystemExit("ERRO: dependencias Android do rexcore nao foram configuradas.")
+          print("Dependencias de link Android do rexcore corrigidas.")
+          PYTHON
+
+          grep -n -A10 -B2 'target_link_libraries(rexcore PRIVATE' "$FILE"
+
+      - name: Corrigir deteccao de plataforma ReXGlue para Android
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import re
+
+          path = Path("rexglue-sdk/CMakeLists.txt")
+          content = path.read_text(encoding="utf-8")
+          marker = "# Platform detection (supports AMD64 and ARM64)"
+          start = content.find(marker)
+          if start < 0:
+              raise SystemExit("ERRO: bloco de deteccao de plataforma nao encontrado.")
+          end = content.find("# Build config as compile definition", start)
+          if end < 0:
+              raise SystemExit("ERRO: fim do bloco de plataforma nao encontrado.")
+          block = content[start:end]
+
+          if "elseif(ANDROID)" in block:
+              print("Deteccao Android ja existe; nenhuma alteracao necessaria.")
+          else:
+              old = "elseif(UNIX AND NOT APPLE)"
+              if old not in block:
+                  raise SystemExit("ERRO: ramo Unix esperado nao encontrado no bloco de plataforma.")
+              block = block.replace(
+                  old,
+                  """elseif(ANDROID)
+              if(REX_TARGET_PROCESSOR MATCHES "aarch64|ARM64|arm64")
+                  set(REX_PLATFORM "android-arm64")
+              else()
+                  message(FATAL_ERROR "ReXGlue Android requer ARM64; arquitetura: ${REX_TARGET_PROCESSOR}")
+              endif()
+              add_compile_definitions(REX_PLATFORM_ANDROID=1)
+          elseif(UNIX AND NOT APPLE)""",
+                  1,
+              )
+              content = content[:start] + block + content[end:]
+              path.write_text(content, encoding="utf-8")
+
+          verify = path.read_text(encoding="utf-8")
+          start = verify.find(marker)
+          end = verify.find("# Build config as compile definition", start)
+          block = verify[start:end]
+          if "elseif(ANDROID)" not in block or 'set(REX_PLATFORM "android-arm64")' not in block:
+              raise SystemExit("ERRO: selecao de plataforma Android nao foi aplicada.")
+          if "add_compile_definitions(REX_PLATFORM_ANDROID=1)" not in block:
+              raise SystemExit("ERRO: macro REX_PLATFORM_ANDROID nao foi adicionada.")
+          print("Selecao de plataforma Android ARM64 aplicada e verificada.")
+          print(block)
           PYTHON
 
       - name: Verificar SDL3
@@ -334,6 +557,17 @@ jobs:
           )
           print(report.read_text(encoding="utf-8"))
           PYTHON
+
+      - name: Diagnosticos segmentados antes da compilacao
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p android-diagnostic
+          bash tools/android/diagnostico_build_segmentado.sh 2>&1 | tee android-diagnostic/diagnostico-build-segmentado.txt
+          diagnostic_status=${PIPESTATUS[0]}
+          if [ "$diagnostic_status" -ne 0 ]; then
+            echo "::warning::O script de diagnóstico terminou com código $diagnostic_status; consulte os blocos COMEÇO/FIM ANÁLISE."
+          fi
 
       - name: Compilar APK ARM64
         shell: bash
