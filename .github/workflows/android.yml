@@ -717,6 +717,19 @@ jobs:
 
           path = Path(sys.argv[1])
           content = path.read_text(encoding="utf-8")
+
+          # SDL's Android entry point must be declared through SDL_main.h.
+          # This maps main() to SDL_main(), which SDLActivity invokes from libmain.
+          if "#include <SDL3/SDL_main.h>" not in content:
+              platform_include = "#include <rex/platform.h>"
+              if platform_include not in content:
+                  raise SystemExit("ERRO: include rex/platform.h nao encontrado no entry point SDL.")
+              content = content.replace(
+                  platform_include,
+                  platform_include + "\n#if REX_PLATFORM_ANDROID\n#include <SDL3/SDL_main.h>\n#endif",
+                  1,
+              )
+
           old = "    std::unique_ptr<rex::ui::WindowedApp> app = rex::ui::GetWindowedAppCreator()(app_context);"
           new = """#if REX_PLATFORM_ANDROID
               auto creator = rex::ui::WindowedApp::GetCreator("blackops1");
@@ -737,6 +750,10 @@ jobs:
           check = path.read_text(encoding="utf-8")
           if "WindowedApp::GetCreator(\"blackops1\")" not in check:
               raise SystemExit("ERRO: selecao do app Android nao aplicada.")
+          if "#include <SDL3/SDL_main.h>" not in check:
+              raise SystemExit("ERRO: SDL_main.h nao foi integrado ao entry point Android.")
+          if "int main(int argc, char* argv[])" not in check:
+              raise SystemExit("ERRO: funcao main esperada nao encontrada no entry point SDL.")
           if "XELOGE" in check:
               raise SystemExit("ERRO: macro de log incompatível ainda presente.")
           print("Android seleciona o app registrado blackops1; desktop preservado.")
