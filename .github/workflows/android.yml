@@ -301,6 +301,49 @@ jobs:
           )
           PYTHON
 
+      - name: Remover bibliotecas POSIX indisponiveis no Android
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          FILE="rexglue-sdk/src/core/CMakeLists.txt"
+          if [ ! -f "$FILE" ]; then
+            echo "::error file=$FILE::CMakeLists.txt do rexcore nao encontrado."
+            exit 1
+          fi
+
+          python - "$FILE" <<'PYTHON'
+          import sys
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          content = path.read_text(encoding="utf-8")
+          old = """if(APPLE)
+              target_link_libraries(rexcore PRIVATE pthread)
+          elseif(UNIX)
+              target_link_libraries(rexcore PRIVATE pthread rt dl)
+          endif()"""
+          new = """if(APPLE)
+              target_link_libraries(rexcore PRIVATE pthread)
+          elseif(ANDROID)
+              # Bionic provides pthread and realtime APIs without separate
+              # -lpthread/-lrt libraries; keep libdl for dlopen/dlsym.
+              target_link_libraries(rexcore PRIVATE dl)
+          elseif(UNIX)
+              target_link_libraries(rexcore PRIVATE pthread rt dl)
+          endif()"""
+          if new not in content:
+              if old not in content:
+                  raise SystemExit("ERRO: bloco de link POSIX do rexcore nao corresponde ao esperado.")
+              content = content.replace(old, new, 1)
+              path.write_text(content, encoding="utf-8")
+          if "elseif(ANDROID)" not in content or "target_link_libraries(rexcore PRIVATE dl)" not in content:
+              raise SystemExit("ERRO: dependencias Android do rexcore nao foram configuradas.")
+          print("Dependencias de link Android do rexcore corrigidas.")
+          PYTHON
+
+          grep -n -A10 -B2 'target_link_libraries(rexcore PRIVATE' "$FILE"
+
       - name: Corrigir deteccao de plataforma ReXGlue para Android
         shell: bash
         run: |
