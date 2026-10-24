@@ -35,6 +35,7 @@ if [[ -n "$NDK" && -d "$NDK" ]]; then
   find "$NDK/toolchains/llvm/prebuilt" -path '*/bin/clang++' -type f -print 2>/dev/null | head -n 4
   CLANGXX="$(find "$NDK/toolchains/llvm/prebuilt" -path '*/bin/clang++' -type f -print -quit 2>/dev/null)"
   if [[ -n "$CLANGXX" ]]; then "$CLANGXX" --version | head -n 2; fi
+  SYSROOT="$(dirname "$(dirname "$CLANGXX")")/sysroot"
 else
   echo "AVISO: não foi possível localizar o NDK nesta etapa."
 fi
@@ -53,7 +54,7 @@ int main() {
   return 0;
 }
 CPP
-  if "$CLANGXX" --target=aarch64-linux-android29 -std=c++20 -fsyntax-only "$TMP_CPP" >"$TMP_ERR" 2>&1; then
+  if "$CLANGXX" --target=aarch64-linux-android29 --sysroot="$SYSROOT" -std=c++20 -fsyntax-only "$TMP_CPP" >"$TMP_ERR" 2>&1; then
     echo "[OK] O compilador aceita std::jthread e std::stop_token em C++20."
   else
     echo "[FALHA] Teste isolado de std::jthread/std::stop_token falhou:"
