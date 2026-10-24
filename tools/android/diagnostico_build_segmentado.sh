@@ -6,28 +6,28 @@ section() {
   local number="$1"
   local title="$2"
   echo
-  echo "========== COMEÇO ANÁLISE \${number} =========="
-  echo "[\${title}]"
+  echo "========== COMEÇO ANÁLISE ${number} =========="
+  echo "[${title}]"
 }
 end_section() {
   local number="$1"
-  echo "========== FIM ANÁLISE \${number} =========="
+  echo "========== FIM ANÁLISE ${number} =========="
 }
 
-ROOT="\${GITHUB_WORKSPACE:-$(pwd)}"
+ROOT="${GITHUB_WORKSPACE:-$(pwd)}"
 cd "$ROOT"
 
 section 1 "REVISÃO DO AMBIENTE ANDROID E COMPILADOR"
 echo "Data UTC: $(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || echo indisponível)"
-echo "Runner: \${RUNNER_OS:-desconhecido} / \${RUNNER_ARCH:-desconhecida}"
-echo "ANDROID_HOME=\${ANDROID_HOME:-não definido}"
-echo "ANDROID_NDK_HOME=\${ANDROID_NDK_HOME:-não definido}"
-echo "ANDROID_NDK_ROOT=\${ANDROID_NDK_ROOT:-não definido}"
+echo "Runner: ${RUNNER_OS:-desconhecido} / ${RUNNER_ARCH:-desconhecida}"
+echo "ANDROID_HOME=${ANDROID_HOME:-não definido}"
+echo "ANDROID_NDK_HOME=${ANDROID_NDK_HOME:-não definido}"
+echo "ANDROID_NDK_ROOT=${ANDROID_NDK_ROOT:-não definido}"
 if command -v cmake >/dev/null 2>&1; then cmake --version | head -n 1; fi
 if command -v gradle >/dev/null 2>&1; then gradle --version | grep -E 'Gradle [0-9]' | head -n 1; fi
 
-NDK="\${ANDROID_NDK_HOME:-\${ANDROID_NDK_ROOT:-}}"
-if [[ -z "$NDK" && -n "\${ANDROID_HOME:-}" ]]; then
+NDK="${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-}}"
+if [[ -z "$NDK" && -n "${ANDROID_HOME:-}" ]]; then
   NDK="$(find "$ANDROID_HOME/ndk" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -V | tail -n 1)"
 fi
 if [[ -n "$NDK" && -d "$NDK" ]]; then
@@ -41,7 +41,7 @@ fi
 end_section 1
 
 section 2 "SUPORTE C++20: jthread E stop_token"
-if [[ -n "\${CLANGXX:-}" && -x "$CLANGXX" ]]; then
+if [[ -n "${CLANGXX:-}" && -x "$CLANGXX" ]]; then
   TMP_CPP="$(mktemp --suffix=.cpp)"
   TMP_ERR="$(mktemp)"
   cat > "$TMP_CPP" <<'CPP'
