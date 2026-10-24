@@ -26,14 +26,27 @@ echo "ANDROID_NDK_ROOT=${ANDROID_NDK_ROOT:-não definido}"
 if command -v cmake >/dev/null 2>&1; then cmake --version | head -n 1; fi
 if command -v gradle >/dev/null 2>&1; then gradle --version | grep -E 'Gradle [0-9]' | head -n 1; fi
 
-NDK="${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-}}"
-if [[ -z "$NDK" && -n "${ANDROID_HOME:-}" ]]; then
-  NDK="$(find "$ANDROID_HOME/ndk" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -V | tail -n 1)"
+# Prefer the exact NDK version declared by the Android Gradle module. The
+# runner's ANDROID_NDK_HOME can point at an older preinstalled NDK.
+NDK_VERSION=""
+if [[ -f android/app/build.gradle ]]; then
+  NDK_VERSION="$(sed -nE "s/^[[:space:]]*ndkVersion[[:space:]]+['\\\"]([^'\\\"]+)['\\\"].*/\\1/p" android/app/build.gradle | head -n 1)"
 fi
+NDK=""
+if [[ -n "$NDK_VERSION" && -n "${ANDROID_HOME:-}" && -d "$ANDROID_HOME/ndk/$NDK_VERSION" ]]; then
+  NDK="$ANDROID_HOME/ndk/$NDK_VERSION"
+elif [[ -n "${ANDROID_HOME:-}" && -d "$ANDROID_HOME/ndk" ]]; then
+  NDK="$(find "$ANDROID_HOME/ndk" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -V | tail -n 1)"
+elif [[ -n "${ANDROID_NDK_HOME:-}" && -d "$ANDROID_NDK_HOME" ]]; then
+  NDK="$ANDROID_NDK_HOME"
+elif [[ -n "${ANDROID_NDK_ROOT:-}" && -d "$ANDROID_NDK_ROOT" ]]; then
+  NDK="$ANDROID_NDK_ROOT"
+fi
+echo "NDK exigido pelo Gradle: ${NDK_VERSION:-não detectado}"
 if [[ -n "$NDK" && -d "$NDK" ]]; then
   echo "NDK selecionado: $NDK"
-  find "$NDK/toolchains/llvm/prebuilt" -path '*/bin/clang++' -type f -print 2>/dev/null | head -n 4
-  CLANGXX="$(find "$NDK/toolchains/llvm/prebuilt" -path '*/bin/clang++' -type f -print -quit 2>/dev/null)"
+  find "$NDK/toolchains/llvm/prebuilt" -path '*/bin/clang++' \( -type f -o -type l \) -print 2>/dev/null | head -n 4
+  CLANGXX="$(find "$NDK/toolchains/llvm/prebuilt" -path '*/bin/clang++' \( -type f -o -type l \) -print -quit 2>/dev/null)"
   if [[ -n "$CLANGXX" ]]; then "$CLANGXX" --version | head -n 2; fi
   SYSROOT="$(dirname "$(dirname "$CLANGXX")")/sysroot"
 else
@@ -73,6 +86,8 @@ done
 if [[ -f rexglue-sdk/include/rex/platform.h ]]; then
   echo "--- Linhas de detecção de plataforma ---"
   grep -n -E 'REX_PLATFORM_(ANDROID|LINUX|MAC)|__ANDROID__|ANDROID' rexglue-sdk/include/rex/platform.h | head -n 80 || true
+  echo "--- Seleção de plataforma no CMake ---"
+  grep -n -A 24 -B 3 '^# Platform detection' rexglue-sdk/CMakeLists.txt || true
 fi
 echo "--- Macros Android/Linux no CMake e Gradle ---"
 grep -R -n -E -- '-D(REX_PLATFORM_LINUX|REX_PLATFORM_ANDROID|ANDROID)(=|[[:space:]]|$)|REX_PLATFORM_LINUX|REX_PLATFORM_ANDROID' \
