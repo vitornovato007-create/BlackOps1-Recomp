@@ -721,7 +721,7 @@ jobs:
           new = """#if REX_PLATFORM_ANDROID
               auto creator = rex::ui::WindowedApp::GetCreator("blackops1");
               if (!creator) {
-                rex::XELOGE("Android app registration 'blackops1' was not found.");
+                // Avoid relying on logging macros that vary across ReXGlue versions.
                 return EXIT_FAILURE;
               }
               std::unique_ptr<rex::ui::WindowedApp> app = creator(app_context);
@@ -737,6 +737,8 @@ jobs:
           check = path.read_text(encoding="utf-8")
           if "WindowedApp::GetCreator(\"blackops1\")" not in check:
               raise SystemExit("ERRO: selecao do app Android nao aplicada.")
+          if "XELOGE" in check:
+              raise SystemExit("ERRO: macro de log incompatível ainda presente.")
           print("Android seleciona o app registrado blackops1; desktop preservado.")
           PYTHON
 
