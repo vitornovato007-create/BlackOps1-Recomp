@@ -397,6 +397,66 @@ jobs:
           print(block)
           PYTHON
 
+      - name: Corrigir APIs Android ausentes no ReXGlue POSIX
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYTHON'
+          from pathlib import Path
+
+          root = Path("rexglue-sdk")
+          memory = root / "src/core/memory_posix.cpp"
+          threading = root / "src/core/threading_posix.cpp"
+          header = root / "include/rex/main_android.h"
+
+          for path in (memory, threading):
+              if not path.is_file():
+                  raise SystemExit(f"::error file={path}::Arquivo ReXGlue necessario ausente.")
+
+          # ReXGlue calls GetAndroidApiLevel(), but the upstream SDK does not
+          # ship rex/main_android.h. Use the public Android NDK API-level API.
+          text = memory.read_text(encoding="utf-8")
+          if "#include <android/api-level.h>" not in text:
+              text = text.replace(
+                  "#if REX_PLATFORM_ANDROID\\n#include <string.h>",
+                  "#if REX_PLATFORM_ANDROID\\n#include <android/api-level.h>\\n#include <string.h>",
+                  1,
+              )
+          text = text.replace("rex::GetAndroidApiLevel()", "android_get_device_api_level()")
+          if "android_get_device_api_level()" not in text or "#include <android/api-level.h>" not in text:
+              raise SystemExit("ERRO: API level Android nao foi corrigida em memory_posix.cpp.")
+          memory.write_text(text, encoding="utf-8")
+
+          text = threading.read_text(encoding="utf-8")
+          text = text.replace(
+              "static_assert(REX_PLATFORM_LINUX || REX_PLATFORM_MAC, \"This file is POSIX-only\");",
+              "static_assert(REX_PLATFORM_LINUX || REX_PLATFORM_MAC || REX_PLATFORM_ANDROID, \"This file is POSIX-only\");",
+              1,
+          )
+          if "#include <rex/main_android.h>" not in text:
+              raise SystemExit("ERRO: include esperado rex/main_android.h nao encontrado em threading_posix.cpp.")
+          threading.write_text(text, encoding="utf-8")
+
+          header.parent.mkdir(parents=True, exist_ok=True)
+          header.write_text(
+              "#pragma once\\n"
+              "#if REX_PLATFORM_ANDROID\\n"
+              "#include <android/api-level.h>\\n"
+              "namespace rex {\\n"
+              "inline int GetAndroidApiLevel() { return android_get_device_api_level(); }\\n"
+              "}  // namespace rex\\n"
+              "#endif  // REX_PLATFORM_ANDROID\\n",
+              encoding="utf-8",
+          )
+
+          if "REX_PLATFORM_ANDROID, \\\"This file is POSIX-only\\\"" not in threading.read_text(encoding="utf-8"):
+              raise SystemExit("ERRO: threading_posix.cpp nao habilitou a compilacao Android.")
+          if "GetAndroidApiLevel" not in header.read_text(encoding="utf-8"):
+              raise SystemExit("ERRO: cabecalho de compatibilidade Android nao foi criado.")
+          print("APIs Android corrigidas em memory_posix.cpp e threading_posix.cpp.")
+          print(f"Cabecalho temporario criado: {header}")
+          PYTHON
+
       - name: Verificar SDL3
         shell: bash
         run: |
