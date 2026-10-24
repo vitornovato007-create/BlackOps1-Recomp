@@ -28,6 +28,21 @@ elseif(APPLE)
         surface_mac.cpp
     )
 else()
+    # Keep the existing Linux surface source.
+    # Its compatibility with Android must be verified separately.
+    set(REXUI_PLATFORM_SOURCES
+        surface_gnulinux.cpp
+    )
+endif()"""
+old_platform_sources_upstream = """if(WIN32)
+    set(REXUI_PLATFORM_SOURCES
+        surface_win.cpp
+    )
+elseif(APPLE)
+    set(REXUI_PLATFORM_SOURCES
+        surface_mac.cpp
+    )
+else()
     set(REXUI_PLATFORM_SOURCES
         surface_gnulinux.cpp
     )
