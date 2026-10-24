@@ -103,7 +103,7 @@ checks = {
     "header has Android ARM64 backend": "REX_PLATFORM_ANDROID && REX_ARCH_ARM64" in h,
     "switch implementation exists": "rex_fiber_swap" in s and "rex_fiber_trampoline" in s,
     "CMake includes Android switch backend": "target_sources(rexcore PRIVATE fiber_switch.cpp)" in c,
-    "shared POSIX source branch remains enabled for Android": "elseif(UNIX)\n    # Linux, macOS/Darwin, and Android share the POSIX sources except fibers;" in c,
+    "shared POSIX source branch remains enabled for Android": bool(re.search(r"(?m)^elseif\\(UNIX\\)\\s*$", c)),
     "POSIX fiber is limited to non-Android UNIX": "if(UNIX AND NOT ANDROID)\n    target_sources(rexcore PRIVATE fiber_posix.cpp)" in c,
     "Android custom backend excludes POSIX fiber implementation": new_guard in p,
 }
