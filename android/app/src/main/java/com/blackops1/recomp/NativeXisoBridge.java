@@ -1,10 +1,11 @@
 package com.blackops1.recomp.importer;
 
-/** Ponte JNI para o extract-xiso embutido na biblioteca nativa. */
+/** Ponte JNI para o extract-xiso embutido em uma biblioteca nativa isolada. */
 public final class NativeXisoBridge {
 
     static {
-        System.loadLibrary("blackops1_android");
+        // Não carregar o runtime SDL3/ReXGlue só para extrair uma ISO.
+        System.loadLibrary("blackops1_xiso");
     }
 
     private NativeXisoBridge() {
