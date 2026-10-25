@@ -1,7 +1,5 @@
-# Integracao do extract-xiso no alvo Android existente.
-# Este arquivo deve ser incluido pelo CMakeLists.txt principal
-# depois de add_library(blackops1_android ...) e antes de
-# target_link_libraries(...).
+# Integra o extract-xiso em uma biblioteca JNI isolada.
+# A extração da ISO não deve carregar SDL3/ReXGlue nem inicializar o runtime do jogo.
 
 set(EXTRACT_XISO_SOURCE
     "${BLACKOPS1_ROOT}/thirdparty/extract-xiso/extract-xiso.c"
@@ -30,7 +28,24 @@ set_source_files_properties(
     COMPILE_DEFINITIONS "main=extract_xiso_cli_main;__LINUX__"
 )
 
-target_sources(blackops1_android PRIVATE
+add_library(blackops1_xiso SHARED
     "${EXTRACT_XISO_SOURCE}"
     "${XISO_BRIDGE_SOURCE}"
+)
+
+target_compile_options(blackops1_xiso PRIVATE
+    -Wall
+    -Wextra
+    -fno-strict-aliasing
+)
+
+target_link_libraries(blackops1_xiso PRIVATE
+    ${android_log_lib}
+)
+
+set_target_properties(blackops1_xiso PROPERTIES
+    OUTPUT_NAME "blackops1_xiso"
+    C_VISIBILITY_PRESET default
+    CXX_VISIBILITY_PRESET default
+    VISIBILITY_INLINES_HIDDEN OFF
 )
