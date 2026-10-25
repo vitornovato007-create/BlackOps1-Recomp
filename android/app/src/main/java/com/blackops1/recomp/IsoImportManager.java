@@ -1,5 +1,7 @@
 package com.blackops1.recomp.importer;
 
+import com.blackops1.recomp.DiagnosticLog;
+
 import android.content.ContentResolver;
 import android.content.Context;
 import android.net.Uri;
@@ -41,6 +43,7 @@ public final class IsoImportManager {
             File iso = null;
             File gameDir = new File(app.getFilesDir(), "blackops1");
             try {
+                DiagnosticLog.info(app, "Importador: preparando diretório temporário e consultando tamanho da ISO.");
                 ContentResolver resolver = app.getContentResolver();
                 File root = new File(app.getFilesDir(), "game-import");
                 if (!root.exists() && !root.mkdirs()) {
@@ -70,6 +73,7 @@ public final class IsoImportManager {
                     out.getFD().sync();
                 }
 
+                DiagnosticLog.info(app, "Cópia da ISO concluída: " + copied + " bytes.");
                 if (copied < 1024L * 1024L) {
                     throw new IOException("O arquivo selecionado é pequeno demais para uma ISO de jogo.");
                 }
@@ -81,6 +85,7 @@ public final class IsoImportManager {
                 }
                 staging = null;
 
+                DiagnosticLog.info(app, "Verificando disponibilidade da ponte nativa XISO.");
                 if (!NativeXisoBridge.isAvailable()) {
                     throw new IOException("O extrator XISO nativo não está disponível nesta compilação.");
                 }
@@ -92,7 +97,10 @@ public final class IsoImportManager {
                 }
 
                 if (callback != null) callback.onProgress("Extraindo conteúdo da ISO…", 0, 0);
+                DiagnosticLog.info(app, "INÍCIO EXTRATOR NATIVO: ISO=" + iso.length() + " bytes; destino=" + gameDir.getAbsolutePath());
+                long extractionStarted = System.currentTimeMillis();
                 int result = NativeXisoBridge.extract(iso.getAbsolutePath(), gameDir.getAbsolutePath(), true);
+                DiagnosticLog.info(app, "FIM EXTRATOR NATIVO: código=" + result + "; duração_ms=" + (System.currentTimeMillis() - extractionStarted));
                 if (result != 0) {
                     throw new IOException("O extrator XISO falhou (código " + result + "). Verifique se a imagem é uma ISO XGD/XISO compatível.");
                 }
@@ -105,6 +113,7 @@ public final class IsoImportManager {
                 }
 
                 int checked = 0;
+                DiagnosticLog.info(app, "Validação estrutural iniciada; arquivos encontrados=" + files.size());
                 for (File file : files) {
                     String relative = gameDir.toURI().relativize(file.toURI()).getPath();
                     if (!file.isFile() || !file.canRead()) {
@@ -115,6 +124,7 @@ public final class IsoImportManager {
                         throw new IOException("O arquivo default.xex está vazio.");
                     }
                     checked++;
+                    DiagnosticLog.info(app, "VALIDADO [" + checked + "/" + files.size() + "]: " + relative + " (" + file.length() + " bytes)");
                     if (callback != null) callback.onProgress(
                             "Validando " + relative + " (" + checked + "/" + files.size() + ")",
                             checked, files.size());
@@ -128,10 +138,12 @@ public final class IsoImportManager {
                 if (callback != null) callback.onProgress(
                         "Validação estrutural concluída: " + checked + " arquivos verificados",
                         checked, files.size());
+                DiagnosticLog.info(app, "VALIDAÇÃO APROVADA: " + checked + " arquivos; default.xex=" + defaultXex.length() + " bytes.");
                 if (callback != null) callback.onComplete(gameDir,
                         "ISO extraída; " + checked + " arquivos verificados. A validação é estrutural, não uma verificação de hash oficial.");
             } catch (Throwable t) {
                 Log.e(TAG, "Falha ao importar ou validar ISO", t);
+                DiagnosticLog.error(app, "FALHA DO IMPORTADOR XISO: " + t.getMessage(), t);
                 if (callback != null) callback.onError(
                         t.getMessage() == null ? "Falha ao importar a ISO." : t.getMessage(), t);
             }
