@@ -251,7 +251,7 @@ public final class MainActivity extends Activity {
             StringBuilder tail = new StringBuilder();
             int start = Math.max(0, lines.length - 8);
             for (int i = start; i < lines.length; i++) {
-                if (!lines[i].trim().isEmpty()) tail.append(lines[i]).append('\\n');
+                if (!lines[i].trim().isEmpty()) tail.append(lines[i]).append('\n');
             }
             diagnosticView.setText(tail.length() == 0 ? "Nenhum evento registrado." : tail.toString());
         } catch (Throwable t) {
