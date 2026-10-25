@@ -1,6 +1,8 @@
 package com.blackops1.recomp;
 
 import android.app.Activity;
+import android.app.ActivityManager;
+import android.app.ApplicationExitInfo;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -23,6 +25,9 @@ import android.widget.Toast;
 import com.blackops1.recomp.importer.IsoImportManager;
 
 import java.io.File;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 /**
  * Launcher Android. Esta Activity NÃO herda de SDLActivity e não inicia o runtime.
@@ -30,6 +35,7 @@ import java.io.File;
  */
 public final class MainActivity extends Activity {
     private static final int REQUEST_ISO = 4101;
+    private static final int REQUEST_EXPORT_LOG = 4102;
     private static final String PREFS = "blackops1_launcher";
     private static final String KEY_URI = "selected_iso_uri";
     private static final String KEY_NAME = "selected_iso_name";
@@ -43,6 +49,7 @@ public final class MainActivity extends Activity {
     private TextView isoName;
     private TextView status;
     private TextView statusDetail;
+    private TextView diagnosticView;
     private ProgressBar progress;
     private Button playButton;
     private Button selectButton;
@@ -55,7 +62,10 @@ public final class MainActivity extends Activity {
         getWindow().setNavigationBarColor(bg);
         getWindow().getDecorView().setSystemUiVisibility(0);
         buildInterface();
+        collectPreviousProcessExitInfo();
         refreshSavedGame();
+        DiagnosticLog.info(this, "Launcher aberto; Android " + android.os.Build.VERSION.RELEASE + ", API " + android.os.Build.VERSION.SDK_INT);
+        refreshDiagnosticView();
     }
 
     private void buildInterface() {
@@ -391,6 +401,8 @@ public final class MainActivity extends Activity {
     }
 
     private void launchRuntime() {
+        DiagnosticLog.info(this, "Usuário tocou em JOGAR; verificando executável e abrindo GameActivity.");
+        refreshDiagnosticView();
         File defaultXex = new File(new File(getFilesDir(), "blackops1"), "default.xex");
         if (!defaultXex.isFile()) {
             playButton.setEnabled(false);
@@ -400,7 +412,24 @@ public final class MainActivity extends Activity {
         }
         Intent intent = new Intent(this, GameActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        startActivity(intent);
+        try {
+            startActivity(intent);
+            DiagnosticLog.info(this, "Intent de GameActivity enviada; aguardando carregamento SDL3/runtime.");
+        } catch (Throwable t) {
+            DiagnosticLog.error(this, "Não foi possível abrir GameActivity.", t);
+            status.setText("FALHA AO ABRIR O RUNTIME");
+            statusDetail.setText(t.toString());
+            new AlertDialog.Builder(this).setTitle("Falha ao iniciar o jogo")
+                    .setMessage(t.toString()).setPositiveButton("OK", null).show();
+        }
+        refreshDiagnosticView();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        collectPreviousProcessExitInfo();
+        refreshDiagnosticView();
     }
 
     private void setImporting(boolean value) {
