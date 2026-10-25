@@ -2,6 +2,10 @@ name: Android ARM64 Build
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+      - fix/diagnostico-e-integracao-android
 
 permissions:
   contents: read
