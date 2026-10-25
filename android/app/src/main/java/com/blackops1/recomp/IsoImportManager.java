@@ -60,6 +60,8 @@ public final class IsoImportManager {
                 }
 
                 long copied = 0;
+                long lastProgressCallbackAt = 0L;
+                long lastProgressCallbackBytes = 0L;
                 try (InputStream in = resolver.openInputStream(uri);
                      FileOutputStream out = new FileOutputStream(staging, false)) {
                     if (in == null) throw new IOException("O Android não conseguiu abrir a ISO selecionada.");
@@ -68,7 +70,19 @@ public final class IsoImportManager {
                     while ((n = in.read(buffer)) != -1) {
                         out.write(buffer, 0, n);
                         copied += n;
-                        if (callback != null) callback.onProgress("Copiando ISO", copied, total);
+                        long now = System.currentTimeMillis();
+                        boolean reachedKnownEnd = total > 0 && copied >= total;
+                        boolean reportProgress = callback != null
+                                && (lastProgressCallbackAt == 0L
+                                || now - lastProgressCallbackAt >= 500L
+                                || copied - lastProgressCallbackBytes >= 64L * 1024L * 1024L
+                                || reachedKnownEnd);
+                        // Evita enfileirar um callback na UI para cada bloco de 1 MiB.
+                        if (reportProgress) {
+                            callback.onProgress("Copiando ISO", copied, total);
+                            lastProgressCallbackAt = now;
+                            lastProgressCallbackBytes = copied;
+                        }
                     }
                     out.getFD().sync();
                 }
@@ -85,10 +99,11 @@ public final class IsoImportManager {
                 }
                 staging = null;
 
-                DiagnosticLog.info(app, "Verificando disponibilidade da ponte nativa XISO.");
+                DiagnosticLog.info(app, "Verificando disponibilidade da ponte nativa XISO isolada.");
                 if (!NativeXisoBridge.isAvailable()) {
                     throw new IOException("O extrator XISO nativo não está disponível nesta compilação.");
                 }
+                DiagnosticLog.info(app, "Ponte nativa XISO carregada; iniciando preparação do destino.");
                 if (gameDir.exists() && !deleteTree(gameDir)) {
                     throw new IOException("Não foi possível limpar a extração anterior.");
                 }
