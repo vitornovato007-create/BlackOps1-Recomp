@@ -181,6 +181,68 @@ public final class MainActivity extends Activity {
         setContentView(scroll);
     }
 
+
+    private void exportDiagnosticLog() {
+        DiagnosticLog.info(this, "Usuário solicitou exportação do log TXT.");
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("text/plain");
+        intent.putExtra(Intent.EXTRA_TITLE, "blackops1-diagnostics.txt");
+        startActivityForResult(intent, REQUEST_EXPORT_LOG);
+    }
+
+    private void writeDiagnosticExport(Uri uri) {
+        try (OutputStream out = getContentResolver().openOutputStream(uri, "w")) {
+            if (out == null) throw new java.io.IOException("O Android não abriu o arquivo de destino.");
+            out.write(DiagnosticLog.readAll(this).getBytes(StandardCharsets.UTF_8));
+            out.flush();
+            Toast.makeText(this, "Log TXT salvo no local escolhido.", Toast.LENGTH_LONG).show();
+            DiagnosticLog.info(this, "Exportação do log TXT concluída.");
+        } catch (Throwable t) {
+            DiagnosticLog.error(this, "Falha ao exportar log TXT.", t);
+            new AlertDialog.Builder(this).setTitle("Falha ao exportar log")
+                    .setMessage(t.toString()).setPositiveButton("OK", null).show();
+        }
+        refreshDiagnosticView();
+    }
+
+    private void refreshDiagnosticView() {
+        if (diagnosticView == null) return;
+        try {
+            String[] lines = DiagnosticLog.readAll(this).split("\\n");
+            StringBuilder tail = new StringBuilder();
+            int start = Math.max(0, lines.length - 8);
+            for (int i = start; i < lines.length; i++) {
+                if (!lines[i].trim().isEmpty()) tail.append(lines[i]).append('\\n');
+            }
+            diagnosticView.setText(tail.length() == 0 ? "Nenhum evento registrado." : tail.toString());
+        } catch (Throwable t) {
+            diagnosticView.setText("Falha ao ler log: " + t);
+        }
+    }
+
+    private void collectPreviousProcessExitInfo() {
+        if (android.os.Build.VERSION.SDK_INT < 30) return;
+        try {
+            ActivityManager manager = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
+            if (manager == null) return;
+            long lastSeen = getPreferences(MODE_PRIVATE).getLong("last_exit_timestamp", 0L);
+            List<ApplicationExitInfo> exits = manager.getHistoricalProcessExitReasons(getPackageName(), 0, 10);
+            long newest = lastSeen;
+            for (ApplicationExitInfo info : exits) {
+                long timestamp = info.getTimestamp();
+                if (timestamp <= lastSeen) continue;
+                newest = Math.max(newest, timestamp);
+                DiagnosticLog.error(this, "ENCERRAMENTO ANTERIOR: processo=" + info.getProcessName()
+                        + ", motivo=" + info.getReason() + ", status=" + info.getStatus()
+                        + ", pid=" + info.getPid() + ", descrição=" + info.getDescription(), null);
+            }
+            if (newest > lastSeen) getPreferences(MODE_PRIVATE).edit().putLong("last_exit_timestamp", newest).apply();
+        } catch (Throwable t) {
+            DiagnosticLog.error(this, "Falha ao consultar histórico de encerramentos Android.", t);
+        }
+    }
+
     private void chooseIso() {
         if (importing) return;
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
@@ -195,11 +257,14 @@ public final class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQUEST_ISO || resultCode != RESULT_OK || data == null || data.getData() == null) {
+        if (requestCode == REQUEST_EXPORT_LOG && resultCode == RESULT_OK && data != null && data.getData() != null) {
+            writeDiagnosticExport(data.getData());
             return;
         }
+        if (requestCode != REQUEST_ISO || resultCode != RESULT_OK || data == null || data.getData() == null) return;
 
         Uri uri = data.getData();
+        DiagnosticLog.info(this, "Usuário selecionou uma ISO: " + displayName(uri));
         try {
             int flags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION
                     | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
@@ -213,6 +278,8 @@ public final class MainActivity extends Activity {
         getPreferences(MODE_PRIVATE).edit().putString(KEY_URI, uri.toString())
                 .putString(KEY_NAME, name).apply();
         playButton.setEnabled(false);
+        DiagnosticLog.info(this, "Iniciando importação da ISO.");
+        refreshDiagnosticView();
         status.setText("PREPARANDO ARQUIVOS");
         statusDetail.setText("Copiando e extraindo a ISO. O tamanho do arquivo pode tornar esse processo demorado.");
         setImporting(true);
@@ -222,6 +289,8 @@ public final class MainActivity extends Activity {
             public void onProgress(String message, long processed, long total) {
                 runOnUiThread(() -> {
                     if (isFinishing()) return;
+                    DiagnosticLog.info(MainActivity.this, "IMPORTAÇÃO: " + message + " [" + processed + "/" + total + "]");
+                    refreshDiagnosticView();
                     if (message.startsWith("Copiando ISO")) {
                         status.setText("COPIANDO ISO");
                         statusDetail.setText(message + "\n" + readable(processed)
@@ -247,6 +316,8 @@ public final class MainActivity extends Activity {
                 runOnUiThread(() -> {
                     if (isFinishing()) return;
                     setImporting(false);
+                    DiagnosticLog.info(MainActivity.this, "IMPORTAÇÃO CONCLUÍDA: " + message);
+                    refreshDiagnosticView();
                     progress.setProgress(100);
                     status.setText("ARQUIVOS VALIDADOS");
                     statusDetail.setText(message + "\nO runtime ainda não foi iniciado.");
@@ -260,6 +331,8 @@ public final class MainActivity extends Activity {
                 runOnUiThread(() -> {
                     if (isFinishing()) return;
                     setImporting(false);
+                    DiagnosticLog.error(MainActivity.this, "FALHA NA IMPORTAÇÃO: " + message, error);
+                    refreshDiagnosticView();
                     status.setText("NÃO FOI POSSÍVEL PREPARAR A ISO");
                     statusDetail.setText(message == null ? "Falha desconhecida durante a importação." : message);
                     playButton.setEnabled(false);
