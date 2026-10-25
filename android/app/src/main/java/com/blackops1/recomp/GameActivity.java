@@ -25,13 +25,18 @@ public final class GameActivity extends SDLActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         DiagnosticLog.info(this, "GameActivity.onCreate: iniciando runtime; processo=" + android.os.Process.myPid());
+        Thread.UncaughtExceptionHandler previousHandler = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((thread, error) -> {
             DiagnosticLog.error(getApplicationContext(),
                     "EXCEÇÃO NÃO CAPTURADA NO RUNTIME; thread=" + thread.getName(), error);
             Log.e(TAG, "Exceção não capturada no runtime", error);
-            // Encaminha para o handler anterior para manter o comportamento normal do Android.
-            android.os.Process.killProcess(android.os.Process.myPid());
-            System.exit(10);
+            // Mantém o handler padrão do Android para que o sistema registre o crash.
+            if (previousHandler != null) {
+                previousHandler.uncaughtException(thread, error);
+            } else {
+                android.os.Process.killProcess(android.os.Process.myPid());
+                System.exit(10);
+            }
         });
         try {
             super.onCreate(savedInstanceState);
