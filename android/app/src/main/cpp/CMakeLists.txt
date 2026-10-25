@@ -121,24 +121,35 @@ set_target_properties(blackops1_android PROPERTIES
   VISIBILITY_INLINES_HIDDEN OFF
 )
 
-# SDLActivity carrega SDL3 como biblioteca dinamica. O link CMake, por si
-# so, nao garante que libSDL3.so seja empacotado no APK. Copie o artefato
-# do alvo SDL3 compartilhado para o diretorio jniLibs ARM64 do app.
-if(TARGET SDL3-shared)
-  set(SDL3_ANDROID_JNILIBS_DIR
-      "${CMAKE_CURRENT_SOURCE_DIR}/../jniLibs/arm64-v8a")
-
-  add_custom_command(TARGET blackops1_android POST_BUILD
-    COMMAND "${CMAKE_COMMAND}" -E make_directory
-            "${SDL3_ANDROID_JNILIBS_DIR}"
-    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-            "$<TARGET_FILE:SDL3-shared>"
-            "${SDL3_ANDROID_JNILIBS_DIR}/libSDL3.so"
-    COMMENT "Empacotando libSDL3.so para Android ARM64"
-    VERBATIM
-  )
-else()
+# SDLActivity carrega SDL3 como biblioteca dinamica. Use o mesmo alvo
+# SDL3::SDL3 que o runtime ja vincula, sem presumir o nome interno do alvo
+# (que varia entre versoes do SDL3).
+if(NOT TARGET SDL3::SDL3)
   message(FATAL_ERROR
-    "O alvo SDL3-shared nao existe. O APK precisa de libSDL3.so "
-    "porque MainActivity usa SDLActivity.")
+    "O alvo SDL3::SDL3 nao existe. Verifique a configuracao do SDL3.")
 endif()
+
+get_target_property(SDL3_LINK_TARGET SDL3::SDL3 ALIASED_TARGET)
+if(NOT SDL3_LINK_TARGET)
+  set(SDL3_LINK_TARGET SDL3::SDL3)
+endif()
+
+get_target_property(SDL3_LINK_TYPE "${SDL3_LINK_TARGET}" TYPE)
+if(NOT SDL3_LINK_TYPE STREQUAL "SHARED_LIBRARY")
+  message(FATAL_ERROR
+    "SDL3::SDL3 nao e uma biblioteca compartilhada (tipo: ${SDL3_LINK_TYPE}). "
+    "SDLActivity precisa de libSDL3.so.")
+endif()
+
+set(SDL3_ANDROID_JNILIBS_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/../jniLibs/arm64-v8a")
+
+add_custom_command(TARGET blackops1_android POST_BUILD
+  COMMAND "${CMAKE_COMMAND}" -E make_directory
+          "${SDL3_ANDROID_JNILIBS_DIR}"
+  COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+          "$<TARGET_FILE:SDL3::SDL3>"
+          "${SDL3_ANDROID_JNILIBS_DIR}/libSDL3.so"
+  COMMENT "Empacotando libSDL3.so para Android ARM64"
+  VERBATIM
+)
