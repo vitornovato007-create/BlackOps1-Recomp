@@ -1,22 +1,19 @@
 package com.blackops1.recomp;
 
-import android.content.Context;
 import android.os.Bundle;
 import android.util.Log;
-import android.widget.Toast;
 
 import org.libsdl.app.SDLActivity;
 
 /**
- * Somente o runtime vive aqui. O Manifest executa esta Activity em :runtime,
- * separado do processo da interface launcher.
+ * Inicialização do runtime em processo separado. Nenhum controle de toque é
+ * necessário para que esta Activity tente inicializar SDL/ReXGlue.
  */
 public final class GameActivity extends SDLActivity {
     private static final String TAG = "BlackOps1Runtime";
 
     @Override
     protected String[] getLibraries() {
-        // A SDLActivity carrega primeiro a SDL e depois a biblioteca do jogo.
         return new String[] { "SDL3", "blackops1_android" };
     }
 
@@ -27,7 +24,33 @@ public final class GameActivity extends SDLActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        Log.i(TAG, "Solicitada inicialização do runtime BlackOps1/ReXGlue.");
-        super.onCreate(savedInstanceState);
+        DiagnosticLog.info(this, "GameActivity.onCreate: iniciando runtime; processo=" + android.os.Process.myPid());
+        Thread.setDefaultUncaughtExceptionHandler((thread, error) -> {
+            DiagnosticLog.error(getApplicationContext(),
+                    "EXCEÇÃO NÃO CAPTURADA NO RUNTIME; thread=" + thread.getName(), error);
+            Log.e(TAG, "Exceção não capturada no runtime", error);
+            // Encaminha para o handler anterior para manter o comportamento normal do Android.
+            android.os.Process.killProcess(android.os.Process.myPid());
+            System.exit(10);
+        });
+        try {
+            super.onCreate(savedInstanceState);
+            DiagnosticLog.info(this, "SDLActivity.onCreate retornou; SDL3/runtime solicitado.");
+        } catch (Throwable t) {
+            DiagnosticLog.error(this, "Falha Java ao criar GameActivity/SDLActivity.", t);
+            throw t;
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        DiagnosticLog.info(this, "GameActivity.onResume.");
+        super.onResume();
+    }
+
+    @Override
+    protected void onDestroy() {
+        DiagnosticLog.info(this, "GameActivity.onDestroy; isFinishing=" + isFinishing());
+        super.onDestroy();
     }
 }
