@@ -219,14 +219,23 @@ public final class MainActivity extends Activity {
 
         IsoImportManager.importIso(this, uri, new IsoImportManager.Callback() {
             @Override
-            public void onProgress(String message, long copiedBytes, long totalBytes) {
+            public void onProgress(String message, long processed, long total) {
                 runOnUiThread(() -> {
                     if (isFinishing()) return;
-                    statusDetail.setText(message + "\n" + readable(copiedBytes)
-                            + (totalBytes > 0 ? " / " + readable(totalBytes) : ""));
-                    if (totalBytes > 0) {
+                    if (message.startsWith("Copiando ISO")) {
+                        status.setText("COPIANDO ISO");
+                        statusDetail.setText(message + "\n" + readable(processed)
+                                + (total > 0 ? " / " + readable(total) : ""));
+                    } else if (message.startsWith("Extraindo") || message.startsWith("Contando")) {
+                        status.setText("EXTRAINDO ARQUIVOS");
+                        statusDetail.setText(message + "\nO extrator nativo não fornece percentual nesta fase.");
+                    } else {
+                        status.setText("VALIDANDO ARQUIVOS");
+                        statusDetail.setText(message);
+                    }
+                    if (total > 0) {
                         progress.setIndeterminate(false);
-                        progress.setProgress((int) Math.min(99, copiedBytes * 100L / totalBytes));
+                        progress.setProgress((int) Math.min(99, processed * 100L / total));
                     } else {
                         progress.setIndeterminate(true);
                     }
@@ -239,8 +248,8 @@ public final class MainActivity extends Activity {
                     if (isFinishing()) return;
                     setImporting(false);
                     progress.setProgress(100);
-                    status.setText("ARQUIVOS PREPARADOS");
-                    statusDetail.setText("A ISO foi extraída. O runtime ainda não foi iniciado.");
+                    status.setText("ARQUIVOS VALIDADOS");
+                    statusDetail.setText(message + "\nO runtime ainda não foi iniciado.");
                     playButton.setEnabled(new File(gameDirectory, "default.xex").isFile());
                     Toast.makeText(MainActivity.this, "Preparação concluída", Toast.LENGTH_SHORT).show();
                 });
