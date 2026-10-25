@@ -51,6 +51,11 @@ set(SDL_SHARED ON CACHE BOOL "" FORCE)
 set(SDL_STATIC OFF CACHE BOOL "" FORCE)
 set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
 
+find_library(android_log_lib log REQUIRED)
+find_library(android_lib android REQUIRED)
+find_library(dl_lib dl REQUIRED)
+find_library(vulkan_lib vulkan REQUIRED)
+
 add_subdirectory(
   "${REXGLUE_SOURCE_DIR}"
   "${CMAKE_BINARY_DIR}/rexglue-sdk"
@@ -64,7 +69,8 @@ if(NOT GENERATED_SOURCES)
     "nao e possivel ligar o codigo do jogo.")
 endif()
 
-# Biblioteca nativa principal.
+# Biblioteca principal do runtime. O extrator XISO fica em uma
+# biblioteca separada para que o launcher não carregue SDL3/ReXGlue.
 add_library(blackops1_android SHARED
   native-lib.cpp
   "${BLACKOPS1_ROOT}/src/main.cpp"
@@ -73,7 +79,7 @@ add_library(blackops1_android SHARED
   ${GENERATED_SOURCES}
 )
 
-# Integra a extracao XISO uma unica vez.
+# Integra o extrator XISO como blackops1_xiso, sem adicioná-lo ao runtime.
 include("${CMAKE_CURRENT_LIST_DIR}/xiso-integration.cmake")
 
 target_include_directories(blackops1_android PRIVATE
@@ -96,11 +102,6 @@ target_compile_options(blackops1_android PRIVATE
 target_compile_definitions(blackops1_android PRIVATE
   REXGLUE_BUILD_CONFIG="$<CONFIG>"
 )
-
-find_library(android_log_lib log REQUIRED)
-find_library(android_lib android REQUIRED)
-find_library(dl_lib dl REQUIRED)
-find_library(vulkan_lib vulkan REQUIRED)
 
 target_link_libraries(blackops1_android PRIVATE
   rex::runtime
