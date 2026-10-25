@@ -168,6 +168,34 @@ public final class MainActivity extends Activity {
         playButton.setEnabled(false);
         playButton.setOnClickListener(v -> launchRuntime());
 
+        Button exportLogButton = makeButton("EXPORTAR LOG TXT", false);
+        LinearLayout.LayoutParams exportLp = matchWrap();
+        exportLp.topMargin = dp(10);
+        hero.addView(exportLogButton, exportLp);
+        exportLogButton.setOnClickListener(v -> exportDiagnosticLog());
+
+        TextView diagTitle = new TextView(this);
+        diagTitle.setText("DIAGNÓSTICO REAL");
+        diagTitle.setTextColor(accent);
+        diagTitle.setTextSize(11);
+        diagTitle.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        LinearLayout.LayoutParams diagTitleLp = matchWrap();
+        diagTitleLp.topMargin = dp(14);
+        hero.addView(diagTitle, diagTitleLp);
+
+        diagnosticView = new TextView(this);
+        diagnosticView.setText("Aguardando eventos de diagnóstico…");
+        diagnosticView.setTextColor(muted);
+        diagnosticView.setTextSize(10);
+        diagnosticView.setTypeface(Typeface.MONOSPACE, Typeface.NORMAL);
+        diagnosticView.setMaxLines(12);
+        diagnosticView.setTextIsSelectable(true);
+        diagnosticView.setPadding(dp(10), dp(10), dp(10), dp(10));
+        diagnosticView.setBackground(roundRect(Color.rgb(16, 20, 20), dp(8), Color.rgb(50, 56, 51)));
+        LinearLayout.LayoutParams diagLp = matchWrap();
+        diagLp.topMargin = dp(6);
+        hero.addView(diagnosticView, diagLp);
+
         TextView footer = new TextView(this);
         footer.setText("BLACKOPS1-RECOMP  •  EXPERIMENTAL BUILD\nÉ necessário possuir uma imagem de jogo compatível.");
         footer.setTextColor(Color.rgb(103, 111, 106));
