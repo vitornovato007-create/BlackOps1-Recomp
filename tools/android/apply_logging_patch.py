@@ -27,8 +27,8 @@ if MARKER in content:
     raise SystemExit(0)
 
 pattern = re.compile(
-    r'^(?P<indent>[ \\t]*)log_config\\.log_dir\\s*=\\s*'
-    r'\\(\\s*exe_dir\\s*/\\s*"logs"\\s*\\)\\.string\\(\\);[ \\t]*$',
+    r'^(?P<indent>[ \t]*)log_config\.log_dir\s*=\s*'
+    r'\(\s*exe_dir\s*/\s*"logs"\s*\)\.string\(\);[ \t]*$',
     re.MULTILINE,
 )
 matches = list(pattern.finditer(content))
@@ -52,7 +52,7 @@ replacement_lines_template = [
 
 if len(matches) == 1:
     indent = matches[0].group("indent")
-    replacement = "\\n".join(indent + line for line in replacement_lines_template)
+    replacement = "\n".join(indent + line for line in replacement_lines_template)
     content = pattern.sub(lambda _match: replacement, content, count=1)
 elif len(matches) == 0:
     # O checkout pode conter a correção anterior do próprio repositório.
@@ -65,7 +65,7 @@ elif len(matches) == 0:
         )
     content = content.replace(
         safe_assignment,
-        "// " + MARKER + ": caminho privado Android ja configurado.\\n" + safe_assignment,
+        "// " + MARKER + ": caminho privado Android ja configurado.\n" + safe_assignment,
         1,
     )
 else:
