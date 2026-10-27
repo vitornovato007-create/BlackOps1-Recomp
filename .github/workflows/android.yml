@@ -860,18 +860,122 @@ jobs:
             exit 1
           fi
 
-          if unzip -l "$APK" | grep -qE 'lib/arm64-v8a/libSDL3d\.so$'; then
-            echo "::error::libSDL3d.so ainda foi empacotada; a exclusao Gradle nao funcionou."
+          if unzip -l "$APK" | grep -qE 'lib/arm64-v8a/libSDL3d\.so
+      - name: Auditar alinhamento ELF para paginas Android de 16 KiB
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/android/audit_apk_alignment.py android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Salvar diagnostico do ambiente
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p android-diagnostic
+
+          {
+            echo "Diagnostico do ambiente Android"
+            date -u
+            java -version 2>&1 || true
+            python --version 2>&1 || true
+            gradle --version 2>&1 || true
+            echo "ANDROID_HOME=$ANDROID_HOME"
+            ls "$ANDROID_HOME/ndk" 2>&1 || true
+            cmake --version 2>&1 || true
+
+            echo "APKs encontrados:"
+            find android/app/build/outputs \
+              -type f -name "*.apk" -print 2>&1 || true
+
+            echo "Arquivos XISO encontrados:"
+            find thirdparty android/app/src/main/cpp \
+              -maxdepth 5 -iname '*xiso*' -type f -print 2>&1 || true
+          } > android-diagnostic/environment.txt
+
+      - name: Publicar diagnosticos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build-diagnostics
+          path: android-diagnostic/
+          if-no-files-found: warn
+          retention-days: 7
+
+; then
+            echo "::error::libSDL3d.so ainda foi empacotada; SDLActivity precisa de libSDL3.so com SONAME correspondente."
             exit 1
           fi
 
-          SDL_COUNT=$(unzip -l "$APK" | grep -cE 'lib/arm64-v8a/libSDL3\.so$' || true)
+          SDL_COUNT=$(unzip -l "$APK" | grep -cE 'lib/arm64-v8a/libSDL3\.so
+      - name: Auditar alinhamento ELF para paginas Android de 16 KiB
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/android/audit_apk_alignment.py android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Salvar diagnostico do ambiente
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p android-diagnostic
+
+          {
+            echo "Diagnostico do ambiente Android"
+            date -u
+            java -version 2>&1 || true
+            python --version 2>&1 || true
+            gradle --version 2>&1 || true
+            echo "ANDROID_HOME=$ANDROID_HOME"
+            ls "$ANDROID_HOME/ndk" 2>&1 || true
+            cmake --version 2>&1 || true
+
+            echo "APKs encontrados:"
+            find android/app/build/outputs \
+              -type f -name "*.apk" -print 2>&1 || true
+
+            echo "Arquivos XISO encontrados:"
+            find thirdparty android/app/src/main/cpp \
+              -maxdepth 5 -iname '*xiso*' -type f -print 2>&1 || true
+          } > android-diagnostic/environment.txt
+
+      - name: Publicar diagnosticos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build-diagnostics
+          path: android-diagnostic/
+          if-no-files-found: warn
+          retention-days: 7
+
+ || true)
           if [ "$SDL_COUNT" -ne 1 ]; then
             echo "::error::Esperava exatamente uma libSDL3.so no APK; encontrei $SDL_COUNT."
             exit 1
           fi
 
-          echo "OK: uma libSDL3.so e libblackops1_android.so estao no APK; libSDL3d.so ausente."
+          # OnInitialize carrega o plugin pelo nome que o SDK deriva da
+          # configuracao CMake. assembleDebug precisa levar o postfix 'd'.
+          for library in librexruntimed.so librexgpu-xenosd.so; do
+            if ! unzip -l "$APK" | grep -qE "lib/arm64-v8a/${library}$"; then
+              echo "::error::Biblioteca obrigatoria ausente do APK ARM64: ${library}"
+              exit 1
+            fi
+          done
+
+          mkdir -p android-diagnostic
+          unzip -p "$APK" lib/arm64-v8a/libblackops1_android.so > android-diagnostic/libblackops1_android.so
+          readelf -d android-diagnostic/libblackops1_android.so > android-diagnostic/native-needed.txt
+          cat android-diagnostic/native-needed.txt
+          grep -q 'libSDL3\.so' android-diagnostic/native-needed.txt || {
+            echo "::error::libblackops1_android.so nao declara a dependencia libSDL3.so que SDLActivity carrega."
+            exit 1
+          }
+          grep -q 'librexruntimed\.so' android-diagnostic/native-needed.txt || {
+            echo "::error::libblackops1_android.so nao declara a dependencia do runtime ReXGlue Debug."
+            exit 1
+          }
+
+          echo "OK: SDL3 tem SONAME consistente, ReXGlue runtime e plugin Xenos Debug estao empacotados."
 
       - name: Auditar alinhamento ELF para paginas Android de 16 KiB
         shell: bash
