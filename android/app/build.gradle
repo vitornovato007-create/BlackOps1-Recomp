@@ -49,8 +49,9 @@ android {
         }
     }
 
-    // SDL3 pode gerar libSDL3d.so na variante Debug. SDLActivity carrega
-    // libSDL3.so; exclua a variante com sufixo d do APK final.
+    // Defesa adicional contra artefatos antigos: o CMake agora remove o
+    // postfix Debug do alvo SDL3 para que o SONAME e o nome esperado por
+    // SDLActivity sejam sempre libSDL3.so. O workflow falha se o NEEDED divergir.
     packaging {
         jniLibs {
             excludes += ['**/libSDL3d.so']
