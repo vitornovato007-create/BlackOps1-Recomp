@@ -168,7 +168,9 @@ bool ReXApp::SetupEnvironment() {
                                         log_level_str, category_levels);
   if (log_file_cvar.empty()) {
     log_config.app_name = std::string(GetName());
-    log_config.log_dir = (exe_dir / "logs").string();
+    // Android executa o processo com diretório do executável em /system/bin, que é somente leitura.
+    // Guarde os logs dentro da pasta privada de dados do usuário, que é gravável.
+    log_config.log_dir = (user_dir / "logs").string();
   }
 
   rex::InitLogging(log_config);
