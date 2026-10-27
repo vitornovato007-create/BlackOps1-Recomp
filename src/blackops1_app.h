@@ -31,7 +31,7 @@ inline void BO1LogStage(const char* format, ...) {
   if (ec) return;
   std::ofstream output(log_dir / "blackops1-diagnostics.txt", std::ios::out | std::ios::app);
   if (!output) return;
-  output << "[NATIVE-STAGE] " << message << '\\n';
+  output << "[NATIVE-STAGE] " << message << '\n';
   output.flush();
 }
 
