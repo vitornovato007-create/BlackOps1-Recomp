@@ -171,7 +171,8 @@ def main() -> int:
         "rexgpu-xenos",
         "blackops1_recomp",
         'DEBUG_POSTFIX ""',
-        "add_dependencies(blackops1_android rexgpu-xenos)",
+        "add_custom_target(blackops1_stage_gpu_plugin",
+        "add_dependencies(blackops1_android blackops1_stage_gpu_plugin)",
         "libSDL3.so",
     ):
         if token in native_cmake:
