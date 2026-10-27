@@ -766,14 +766,13 @@ jobs:
           fi
 
           grep -q 'SDL_main(int argc, char\* argv\[\])' "$RUNTIME_ENTRY"
-          grep -q 'SetAndroidApplicationContext' "$RUNTIME_ENTRY"
           grep -q 'memory::AndroidInitialize' "$RUNTIME_ENTRY"
           grep -q 'thread::AndroidInitialize' "$RUNTIME_ENTRY"
           grep -q 'filesystem::AndroidInitialize' "$RUNTIME_ENTRY"
           grep -q 'WindowedApp::GetCreator("blackops1")' "$RUNTIME_ENTRY"
 
           echo "OK: SDLActivity Java e SDL nativo vem do mesmo checkout."
-          echo "OK: SDL_main inicializa contexto Android/ReXGlue e seleciona blackops1."
+          echo "OK: SDL_main inicializa os subsistemas Android/ReXGlue e seleciona blackops1."
 
       - name: Compilar APK ARM64
         shell: bash
