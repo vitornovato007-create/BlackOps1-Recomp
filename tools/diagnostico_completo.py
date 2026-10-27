@@ -164,11 +164,39 @@ def main() -> int:
         )
 
     native_cmake = read_text(ROOT / "android/app/src/main/cpp/CMakeLists.txt")
-    for token in ("add_subdirectory(", "SDL3::SDL3", "rex::runtime", "rex::gpu-xenos"):
+    for token in (
+        "add_subdirectory(",
+        "SDL3::SDL3",
+        "rex::runtime",
+        "rexgpu-xenos",
+        "blackops1_recomp",
+        'DEBUG_POSTFIX ""',
+        "add_dependencies(blackops1_android rexgpu-xenos)",
+        "libSDL3.so",
+    ):
         if token in native_cmake:
-            print(f"[OK] CMake Android menciona {token}")
+            print(f"[OK] CMake Android menciona/configura {token}")
         else:
-            print(f"[AVISO] CMake Android nao menciona {token}")
+            print(f"[AVISO] CMake Android nao menciona/configura {token}")
+
+    link_block = re.search(
+        r"target_link_libraries\\(blackops1_android PRIVATE(.*?)\\)",
+        native_cmake,
+        re.DOTALL,
+    )
+    if link_block and re.search(
+        r"\\brex::(?:ui|audio|input|gpu-xenos)\\b",
+        link_block.group(1),
+    ):
+        blockers.append(
+            "O alvo blackops1_android liga diretamente OBJECT libraries do SDK; "
+            "isso pode duplicar o estado global do runtime ReXGlue"
+        )
+        print("[ERRO] OBJECT libraries do SDK estao ligadas diretamente ao app.")
+    elif link_block:
+        print("[OK] O app nao religa diretamente OBJECT libraries do ReXGlue.")
+    else:
+        print("[AVISO] Nao foi possivel localizar o bloco de link do app Android.")
 
     print("\n--- Resultado ---")
     if blockers:
