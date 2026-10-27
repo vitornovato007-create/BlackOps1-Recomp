@@ -4,6 +4,9 @@
     #include <string>
     #include <memory>
     #include <string_view>
+    #include <cstdarg>
+    #include <cstdio>
+    #include <mutex>
     #include <SDL3/SDL.h>
     #include <rex/rex_app.h>
     #include <rex/ui/windowed_app.h>
