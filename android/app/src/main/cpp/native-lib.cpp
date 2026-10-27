@@ -19,7 +19,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM*, void*) {
         if (!ec) {
             std::ofstream output(log_dir / "blackops1-diagnostics.txt", std::ios::out | std::ios::app);
             if (output) {
-                output << "[NATIVE-STAGE] [BO1-STAGE] JNI_OnLoad: blackops1_android carregada\\n";
+                output << "[NATIVE-STAGE] [BO1-STAGE] JNI_OnLoad: blackops1_android carregada\n";
                 output.flush();
             }
         }
