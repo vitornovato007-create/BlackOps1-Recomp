@@ -846,6 +846,12 @@ jobs:
 
           echo "OK: uma libSDL3.so e libblackops1_android.so estao no APK; libSDL3d.so ausente."
 
+      - name: Auditar alinhamento ELF para paginas Android de 16 KiB
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/android/audit_apk_alignment.py android/app/build/outputs/apk/debug/app-debug.apk
+
       - name: Salvar diagnostico do ambiente
         if: always()
         shell: bash
