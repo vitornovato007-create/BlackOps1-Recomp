@@ -531,37 +531,38 @@ jobs:
           if "#include <rex/main_android.h>" not in text:
               raise SystemExit("ERRO: include esperado rex/main_android.h nao encontrado em threading_posix.cpp.")
 
-          # Bionic's robust-mutex APIs differ from glibc. Find each robust-mutex
-          # operation first, then walk backwards to its enclosing Linux guard.
-          # This avoids relying on a fixed number of lines or nested #endif layout.
-          lines = text.splitlines(keepends=True)
-          original_guard = "#if REX_PLATFORM_LINUX"
+          # Linux-only extensions and robust-mutex recovery must not be
+          # compiled for Android's Bionic libc. Do not count source blocks:
+          # the pinned community patch may rearrange/nest preprocessor guards.
+          # Normalize every top-level Linux guard in this POSIX file instead.
           android_safe_guard = "#if REX_PLATFORM_LINUX && !defined(__ANDROID__)"
-          robust_markers = ("PTHREAD_MUTEX_ROBUST", "pthread_mutexattr_setrobust", "EOWNERDEAD")
-          guard_indexes = set()
+          text = re.sub(
+              r"(?m)^#if REX_PLATFORM_LINUX\\s*$",
+              android_safe_guard,
+              text,
+          )
 
-          for marker_index, line in enumerate(lines):
-              if not any(marker in line for marker in robust_markers):
-                  continue
-              for guard_index in range(marker_index - 1, -1, -1):
-                  guard = lines[guard_index].strip()
-                  if guard in (original_guard, android_safe_guard):
-                      guard_indexes.add(guard_index)
-                      if guard == original_guard:
-                          lines[guard_index] = lines[guard_index].replace(
-                              original_guard, android_safe_guard, 1
-                          )
-                      break
-
-          if "PTHREAD_MUTEX_ROBUST" not in text:
-              raise SystemExit("ERRO: codigo robusto Linux nao encontrado no SDK.")
-          text = "".join(lines)
-          protected_count = text.count(android_safe_guard)
-          if len(guard_indexes) < 3 or protected_count < 3:
+          # Idempotent verification: no unguarded exact Linux guard may remain.
+          if re.search(r"(?m)^#if REX_PLATFORM_LINUX\\s*$", text):
               raise SystemExit(
-                  "ERRO: nao foi possivel identificar/proteger os tres blocos "
-                  f"de mutex robusto (blocos={len(guard_indexes)}, protegidos={protected_count})."
+                  "ERRO: ainda existe um guard Linux que nao exclui Android."
               )
+          if android_safe_guard not in text:
+              raise SystemExit(
+                  "ERRO: nenhum guard Linux Android-safe foi aplicado em threading_posix.cpp."
+              )
+          if not all(marker in text for marker in (
+              "PTHREAD_MUTEX_ROBUST",
+              "pthread_mutexattr_setrobust",
+              "EOWNERDEAD",
+          )):
+              raise SystemExit(
+                  "ERRO: a fonte mudou e os marcadores de mutex robusto nao foram encontrados."
+              )
+          print(
+              "Guards Linux normalizados para excluir Android; "
+              "sem contagem fragil de blocos."
+          )
           threading.write_text(text, encoding="utf-8")
 
           header.parent.mkdir(parents=True, exist_ok=True)
