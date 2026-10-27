@@ -178,9 +178,13 @@ bool ReXApp::SetupEnvironment() {
     } else if (!path_config.cache_root.empty()) {
       // Último fallback gravável conhecido, também configurado pelo app Android.
       log_config.log_dir = (path_config.cache_root / "logs").string();
+    } else if (!path_config.config_path.empty()) {
+      // O app Android define config_path sob SDL_GetPrefPath(), também privado e gravável.
+      log_config.log_dir =
+          (path_config.config_path.parent_path() / "logs").string();
     } else {
-      // Não passe um caminho relativo que possa resolver para /system/bin/logs.
-      log_config.log_dir.clear();
+      // Falha explícita: não permita que logging.cpp caia em current_path()/logs.
+      log_config.log_dir = "/data/local/tmp/blackops1-logs";
     }
   }
 
