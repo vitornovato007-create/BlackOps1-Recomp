@@ -781,6 +781,17 @@ jobs:
           set -euo pipefail
           gradle -p android --no-daemon --stacktrace assembleDebug
 
+      # Publicar imediatamente apos a compilacao, antes das verificacoes.
+      # Assim o APK fica disponivel mesmo se a validacao abaixo falhar.
+      - name: Publicar APK ARM64 para diagnostico
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BlackOps1-Android-ARM64-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Verificar APK gerado
         shell: bash
         run: |
@@ -812,7 +823,7 @@ jobs:
           fi
 
           if unzip -l "$APK" | grep -qE 'lib/arm64-v8a/libSDL3d\.so$'; then
-            echo "::error::libSDL3d.so inesperada no APK; deve ser usada apenas a libSDL3.so do checkout SDL3."
+            echo "::error::libSDL3d.so ainda foi empacotada; a exclusao Gradle nao funcionou."
             exit 1
           fi
 
@@ -858,11 +869,3 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Publicar APK ARM64
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: BlackOps1-Android-ARM64-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 7
