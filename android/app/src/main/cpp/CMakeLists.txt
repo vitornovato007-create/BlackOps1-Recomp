@@ -74,7 +74,7 @@ endif()
 add_library(blackops1_android SHARED
   native-lib.cpp
   "${BLACKOPS1_ROOT}/src/main.cpp"
-  "${REXGLUE_SOURCE_DIR}/src/ui/windowed_app_main_sdl.cpp"
+  android_main.cpp
   "${REXGLUE_SOURCE_DIR}/src/ui/rex_app.cpp"
   ${GENERATED_SOURCES}
 )
