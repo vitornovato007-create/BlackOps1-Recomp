@@ -7,7 +7,9 @@
 #include <jni.h>
 
 #include <cstdlib>
+#include <map>
 #include <string>
+#include <utility>
 
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
