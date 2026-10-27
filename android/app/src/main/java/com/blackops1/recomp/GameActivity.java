@@ -5,7 +5,6 @@ import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
 
-import java.io.FileNotFoundException;
 
 import org.libsdl.app.SDLActivity;
 
@@ -22,8 +21,7 @@ public final class GameActivity extends SDLActivity {
     // failure during Android context initialization.
     private static volatile GameActivity currentInstance;
 
-    private static ParcelFileDescriptor openContentFd(String uriText, String mode)
-            throws FileNotFoundException {
+    public static ParcelFileDescriptor openContentFd(String uriText, String mode) {
         GameActivity activity = currentInstance;
         if (activity == null || uriText == null || uriText.isEmpty()) {
             return null;
@@ -31,7 +29,12 @@ public final class GameActivity extends SDLActivity {
 
         Uri uri = Uri.parse(uriText);
         String openMode = (mode != null && mode.contains("w")) ? "w" : "r";
-        return activity.getContentResolver().openFileDescriptor(uri, openMode);
+        try {
+            return activity.getContentResolver().openFileDescriptor(uri, openMode);
+        } catch (Exception error) {
+            Log.w(TAG, "Nao foi possivel abrir URI Android pelo ContentResolver: " + uri, error);
+            return null;
+        }
     }
 
     @Override
