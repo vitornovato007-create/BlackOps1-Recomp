@@ -229,25 +229,20 @@ add_custom_command(TARGET blackops1_android POST_BUILD
 # postfix de configuracao (por exemplo, librexgpu-xenosd.so em Debug). Nao
 # linke o plugin ao app: copie-o com o nome original calculado pelo SDK.
 if(TARGET rexgpu-xenos)
-  add_dependencies(blackops1_android rexgpu-xenos)
-  # O POST_BUILD do plugin cobre builds limpos; esta copia adicional no app
-  # cobre rebuilds incrementais quando o app muda mas o plugin nao.
-  add_custom_command(TARGET blackops1_android POST_BUILD
+  # El target del plugin se define dentro del SDK, por eso no se le puede
+  # adjuntar add_custom_command(TARGET ...) desde este CMakeLists. Un target
+  # de staging dependiente del plugin copia su nombre real (incluido el 'd'
+  # de Debug) a jniLibs y se ejecuta tambien en builds incrementales.
+  add_custom_target(blackops1_stage_gpu_plugin
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${BLACKOPS1_JNILIBS_DIR}"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
             "$<TARGET_FILE:rexgpu-xenos>"
             "${BLACKOPS1_JNILIBS_DIR}/$<TARGET_FILE_NAME:rexgpu-xenos>"
-    COMMENT "Confirmando plugin ReXGlue Xenos em nativeLibraryDir"
-    VERBATIM
-  )
-  add_custom_command(TARGET rexgpu-xenos POST_BUILD
-    COMMAND "${CMAKE_COMMAND}" -E make_directory "${BLACKOPS1_JNILIBS_DIR}"
-    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-            "$<TARGET_FILE:rexgpu-xenos>"
-            "${BLACKOPS1_JNILIBS_DIR}/$<TARGET_FILE_NAME:rexgpu-xenos>"
+    DEPENDS rexgpu-xenos
     COMMENT "Empacotando plugin ReXGlue Xenos com postfix de configuracao correto"
     VERBATIM
   )
+  add_dependencies(blackops1_android blackops1_stage_gpu_plugin)
 else()
   message(FATAL_ERROR
     "O alvo rexgpu-xenos nao existe; o runtime Black Ops 1 precisa do plugin Xenos.")
