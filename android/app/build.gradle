@@ -35,6 +35,9 @@ android {
         externalNativeBuild {
             cmake {
                 cppFlags '-std=c++23'
+                // Todas as bibliotecas nativas do SDK, SDL3 e app compartilham
+                // o mesmo runtime C++; evita runtimes libc++ duplicados no APK.
+                arguments '-DANDROID_STL=c++_shared'
             }
         }
     }
