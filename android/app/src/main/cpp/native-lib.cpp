@@ -1,10 +1,22 @@
 #include <jni.h>
 #include <android/log.h>
-#include <atomic>
 #include <mutex>
 #include <string>
 
 #define TAG "BlackOps1Android"
+
+extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM*, void*) {
+    // Keep JNI_OnLoad minimal: SDL's Android context/storage helpers may not
+    // be safe to call while the shared library is still being loaded.
+    // Defer SDL and filesystem work until the runtime has initialized.
+    __android_log_print(
+        ANDROID_LOG_INFO,
+        TAG,
+        "[BO1-STAGE] JNI_OnLoad: blackops1_android carregada"
+    );
+
+    return JNI_VERSION_1_6;
+}
 
 namespace {
 std::mutex status_mutex;

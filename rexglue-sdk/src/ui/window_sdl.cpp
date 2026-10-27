@@ -35,6 +35,8 @@
 #include <SDL3/SDL_metal.h>
 
 #include <rex/ui/surface_mac.h>
+#elif REX_PLATFORM_ANDROID
+#include <rex/ui/surface_android.h>
 #else
 #include <X11/Xlib-xcb.h>
 #include <rex/ui/surface_gnulinux.h>
@@ -137,7 +139,7 @@ bool WindowSDL::OpenImpl() {
   // SDL window coordinates are physical pixels on Windows and X11. Cocoa
   // uses logical points and applies the backing scale itself.
   SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN;
-#if REX_PLATFORM_MAC
+#if REX_PLATFORM_MAC || REX_PLATFORM_ANDROID
   int initial_width = int(GetDesiredLogicalWidth());
   int initial_height = int(GetDesiredLogicalHeight());
 #else
@@ -385,6 +387,15 @@ std::unique_ptr<Surface> WindowSDL::CreateSurfaceImpl(Surface::TypeFlags allowed
         SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WIN32_INSTANCE_POINTER, nullptr));
     if (hwnd) {
       return std::make_unique<Win32HwndSurface>(hinstance, hwnd);
+    }
+  }
+#elif REX_PLATFORM_ANDROID
+  SDL_PropertiesID props = SDL_GetWindowProperties(sdl_window_);
+  if (allowed_types & Surface::kTypeFlag_AndroidNativeWindow) {
+    auto* window = static_cast<ANativeWindow*>(
+        SDL_GetPointerProperty(props, SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, nullptr));
+    if (window) {
+      return std::make_unique<AndroidNativeWindowSurface>(window, sdl_window_);
     }
   }
 #elif REX_PLATFORM_MAC

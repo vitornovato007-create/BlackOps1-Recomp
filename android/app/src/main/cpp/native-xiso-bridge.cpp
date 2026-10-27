@@ -5,8 +5,8 @@
 #define XISO_TAG "BlackOps1XISO"
 
 // Nome definido no CMakeLists.txt:
-// main=blackops_extract_xiso_main
-extern "C" int blackops_extract_xiso_main(int argc, char **argv);
+// main=extract_xiso_cli_main
+extern "C" int extract_xiso_cli_main(int argc, char **argv);
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_blackops1_recomp_importer_NativeXisoBridge_isAvailable(
@@ -73,7 +73,7 @@ Java_com_blackops1_recomp_importer_NativeXisoBridge_extract(
             "Iniciando extracao XISO"
     );
 
-    const int result = blackops_extract_xiso_main(argc, argv);
+    const int result = extract_xiso_cli_main(argc, argv);
 
     __android_log_print(
             ANDROID_LOG_INFO,

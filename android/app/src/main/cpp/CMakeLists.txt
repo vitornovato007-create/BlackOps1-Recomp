@@ -51,6 +51,11 @@ set(SDL_SHARED ON CACHE BOOL "" FORCE)
 set(SDL_STATIC OFF CACHE BOOL "" FORCE)
 set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
 
+find_library(android_log_lib log REQUIRED)
+find_library(android_lib android REQUIRED)
+find_library(dl_lib dl REQUIRED)
+find_library(vulkan_lib vulkan REQUIRED)
+
 add_subdirectory(
   "${REXGLUE_SOURCE_DIR}"
   "${CMAKE_BINARY_DIR}/rexglue-sdk"
@@ -64,16 +69,17 @@ if(NOT GENERATED_SOURCES)
     "nao e possivel ligar o codigo do jogo.")
 endif()
 
-# Biblioteca nativa principal.
+# Biblioteca principal do runtime. O extrator XISO fica em uma
+# biblioteca separada para que o launcher não carregue SDL3/ReXGlue.
 add_library(blackops1_android SHARED
   native-lib.cpp
   "${BLACKOPS1_ROOT}/src/main.cpp"
-  "${REXGLUE_SOURCE_DIR}/src/ui/windowed_app_main_sdl.cpp"
+  android_main.cpp
   "${REXGLUE_SOURCE_DIR}/src/ui/rex_app.cpp"
   ${GENERATED_SOURCES}
 )
 
-# Integra a extracao XISO uma unica vez.
+# Integra o extrator XISO como blackops1_xiso, sem adicioná-lo ao runtime.
 include("${CMAKE_CURRENT_LIST_DIR}/xiso-integration.cmake")
 
 target_include_directories(blackops1_android PRIVATE
@@ -86,6 +92,9 @@ target_include_directories(blackops1_android PRIVATE
   "${REXGLUE_SOURCE_DIR}/thirdparty"
 )
 
+# Android 15+ devices may use 16 KiB memory pages. Keep the runtime ELF compatible.
+target_link_options(blackops1_android PRIVATE "-Wl,-z,max-page-size=16384")
+
 target_compile_options(blackops1_android PRIVATE
   -Wall
   -Wextra
@@ -96,11 +105,6 @@ target_compile_options(blackops1_android PRIVATE
 target_compile_definitions(blackops1_android PRIVATE
   REXGLUE_BUILD_CONFIG="$<CONFIG>"
 )
-
-find_library(android_log_lib log REQUIRED)
-find_library(android_lib android REQUIRED)
-find_library(dl_lib dl REQUIRED)
-find_library(vulkan_lib vulkan REQUIRED)
 
 target_link_libraries(blackops1_android PRIVATE
   rex::runtime
@@ -119,4 +123,44 @@ set_target_properties(blackops1_android PROPERTIES
   OUTPUT_NAME "blackops1_android"
   CXX_VISIBILITY_PRESET default
   VISIBILITY_INLINES_HIDDEN OFF
+)
+
+# SDLActivity carrega SDL3 como biblioteca dinamica. Use o mesmo alvo
+# SDL3::SDL3 que o runtime ja vincula, sem presumir o nome interno do alvo
+# (que varia entre versoes do SDL3).
+if(NOT TARGET SDL3::SDL3)
+  message(FATAL_ERROR
+    "O alvo SDL3::SDL3 nao existe. Verifique a configuracao do SDL3.")
+endif()
+
+get_target_property(SDL3_LINK_TARGET SDL3::SDL3 ALIASED_TARGET)
+if(NOT SDL3_LINK_TARGET)
+  set(SDL3_LINK_TARGET SDL3::SDL3)
+endif()
+
+# SDLActivity loads libSDL3.so directly; align it for 16 KiB Android pages too.
+if(TARGET SDL3-shared)
+  target_link_options(SDL3-shared PRIVATE "-Wl,-z,max-page-size=16384")
+else()
+  target_link_options("${SDL3_LINK_TARGET}" PRIVATE "-Wl,-z,max-page-size=16384")
+endif()
+
+get_target_property(SDL3_LINK_TYPE "${SDL3_LINK_TARGET}" TYPE)
+if(NOT SDL3_LINK_TYPE STREQUAL "SHARED_LIBRARY")
+  message(FATAL_ERROR
+    "SDL3::SDL3 nao e uma biblioteca compartilhada (tipo: ${SDL3_LINK_TYPE}). "
+    "SDLActivity precisa de libSDL3.so.")
+endif()
+
+set(SDL3_ANDROID_JNILIBS_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/../jniLibs/arm64-v8a")
+
+add_custom_command(TARGET blackops1_android POST_BUILD
+  COMMAND "${CMAKE_COMMAND}" -E make_directory
+          "${SDL3_ANDROID_JNILIBS_DIR}"
+  COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+          "$<TARGET_FILE:SDL3::SDL3>"
+          "${SDL3_ANDROID_JNILIBS_DIR}/libSDL3.so"
+  COMMENT "Empacotando libSDL3.so para Android ARM64"
+  VERBATIM
 )

@@ -1,37 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
-
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
 
-<uses-feature
-    android:glEsVersion="0x00030000"
-    android:required="false" />
+    <uses-feature
+        android:glEsVersion="0x00030000"
+        android:required="false" />
 
-<uses-feature
-    android:name="android.hardware.gamepad"
-    android:required="false" />
+    <uses-feature
+        android:name="android.hardware.gamepad"
+        android:required="false" />
 
-<application
-    android:allowBackup="false"
-    android:hasCode="true"
-    android:label="@string/app_name"
-    android:theme="@style/AppTheme"
-    android:usesCleartextTraffic="false">
+    <application
+        android:allowBackup="false"
+        android:hasCode="true"
+        android:label="@string/app_name"
+        android:theme="@style/AppTheme"
+        android:usesCleartextTraffic="false">
 
-    <activity
-        android:name=".MainActivity"
-        android:configChanges="orientation|screenSize|keyboardHidden"
-        android:exported="true"
-        android:screenOrientation="landscape">
+        <!-- Launcher leve: não carrega SDL nem inicializa o runtime. -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="unspecified">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
 
-        <intent-filter>
-            <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.LAUNCHER" />
-        </intent-filter>
+        <!-- O runtime SDL/ReXGlue só é iniciado após o usuário tocar em Jogar.
+             Processo separado para que o encerramento do runtime não derrube o launcher. -->
+        <activity
+            android:name=".GameActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:process=":runtime"
+            android:screenOrientation="landscape" />
 
-    </activity>
-
-</application>
-
-
+    </application>
 </manifest>

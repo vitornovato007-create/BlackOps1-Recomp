@@ -23,6 +23,25 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # Diagnostico inicial: registra inconsistencias antes de baixar/compilar o SDK.
+      - name: Diagnostico estatico do repositorio
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p build-diagnostic
+          python3 tools/diagnostico_completo.py 2>&1 | tee build-diagnostic/diagnostico-completo.txt
+          diagnostic_status=${PIPESTATUS[0]}
+          if [ "$diagnostic_status" -ne 0 ]; then
+            echo "::error::O diagnostico estatico encontrou bloqueadores."
+            exit "$diagnostic_status"
+          fi
+          python3 scripts/auditar_gerados.py 2>&1 | tee build-diagnostic/auditoria-gerados.txt
+          audit_status=${PIPESTATUS[0]}
+          if [ "$audit_status" -ne 0 ]; then
+            echo "::error::A auditoria dos arquivos gerados falhou."
+            exit "$audit_status"
+          fi
     
       # 2. Confere os arquivos necessários.
       - name: Verificar arquivos
@@ -357,6 +376,7 @@ jobs:
           path: |
             build/
             generated/
+            build-diagnostic/
             rexglue-sdk/out/linux-amd64/
             ${{ runner.temp }}/blackops1-build.log
           if-no-files-found: warn

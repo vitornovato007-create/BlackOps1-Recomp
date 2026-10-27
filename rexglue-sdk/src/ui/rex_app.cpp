@@ -12,6 +12,16 @@
 #include <rex/rex_app.h>
 
 #include <cstdlib>
+#include <cstdarg>
+#include <cstdio>
+#include <fstream>
+#include <mutex>
+#include <system_error>
+
+#if defined(__ANDROID__)
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_system.h>
+#endif
 
 #include <rex/assert.h>
 #include <rex/cvar.h>
@@ -53,6 +63,41 @@ REXCVAR_DEFINE_STRING(gpu_plugin, "", "GPU",
 
 namespace rex {
 
+
+namespace {
+
+void ReXAppStageLog(const char* format, ...) {
+  char message[2048];
+  va_list args;
+  va_start(args, format);
+  std::vsnprintf(message, sizeof(message), format, args);
+  va_end(args);
+
+#if defined(__ANDROID__)
+  SDL_Log("[REX-STAGE] %s", message);
+  const char* internal = SDL_GetAndroidInternalStoragePath();
+  if (internal && *internal) {
+    static std::mutex log_mutex;
+    std::lock_guard<std::mutex> lock(log_mutex);
+    std::error_code ec;
+    const auto log_dir = std::filesystem::path(internal) / "logs";
+    std::filesystem::create_directories(log_dir, ec);
+    if (!ec) {
+      std::ofstream output(log_dir / "blackops1-diagnostics.txt",
+                           std::ios::out | std::ios::app);
+      if (output) {
+        output << "[REX-STAGE] " << message << '\\n';
+        output.flush();
+      }
+    }
+  }
+#else
+  REXLOG_INFO("[REX-STAGE] {}", message);
+#endif
+}
+
+}  // namespace
+
 // --- ReXApp ---
 
 ReXApp::~ReXApp() = default;
@@ -84,21 +129,37 @@ system::AchievementManager& ReXApp::achievements() const {
 }
 
 bool ReXApp::OnInitialize() {
-  if (!SetupEnvironment())
+  ReXAppStageLog("OnInitialize: SetupEnvironment start");
+  if (!SetupEnvironment()) {
+    ReXAppStageLog("FAIL OnInitialize: SetupEnvironment returned false");
     return false;
-  if (!SetupPresentation())
-    return false;
+  }
+  ReXAppStageLog("OnInitialize: SetupEnvironment returned true");
 
+  ReXAppStageLog("OnInitialize: SetupPresentation start");
+  if (!SetupPresentation()) {
+    ReXAppStageLog("FAIL OnInitialize: SetupPresentation returned false");
+    return false;
+  }
+  ReXAppStageLog("OnInitialize: SetupPresentation returned true");
+
+  ReXAppStageLog("OnInitialize: OnFinalizePaths start");
   auto paths = OnFinalizePaths(resolved_defaults_, MakeResumeCallback());
   if (!paths) {
+    ReXAppStageLog("OnInitialize: OnFinalizePaths returned no paths; async resume expected");
     // Async: consumer will invoke resume when ready. OnInitialize returns
     // true so the event loop keeps pumping (wizard dialogs render).
     return true;
   }
 
-  if (!ConstructRuntime(*paths))
+  ReXAppStageLog("OnInitialize: OnFinalizePaths returned paths; ConstructRuntime start");
+  if (!ConstructRuntime(*paths)) {
+    ReXAppStageLog("FAIL OnInitialize: ConstructRuntime returned false");
     return false;
+  }
+  ReXAppStageLog("OnInitialize: ConstructRuntime returned true; LaunchModule start");
   LaunchModule();
+  ReXAppStageLog("OnInitialize: LaunchModule queued; returning true");
   return true;
 }
 
@@ -168,7 +229,25 @@ bool ReXApp::SetupEnvironment() {
                                         log_level_str, category_levels);
   if (log_file_cvar.empty()) {
     log_config.app_name = std::string(GetName());
-    log_config.log_dir = (exe_dir / "logs").string();
+    // Use o caminho FINAL após OnConfigurePaths(). No Android, o app define
+    // path_config.user_data_root com SDL_GetPrefPath(); a variável local user_dir
+    // foi calculada antes do callback e pode apontar para /system/bin (somente leitura).
+    // Usar user_dir aqui recria o crash ao tentar criar /system/bin/logs.
+    const auto& effective_user_dir = path_config.user_data_root;
+    if (!effective_user_dir.empty()) {
+      log_config.log_dir = (effective_user_dir / "logs").string();
+    } else if (!path_config.cache_root.empty()) {
+      // Último fallback gravável conhecido, também configurado pelo app Android.
+      log_config.log_dir = (path_config.cache_root / "logs").string();
+    } else if (!path_config.config_path.empty()) {
+      // O app Android define config_path sob SDL_GetPrefPath(), também privado e gravável.
+      log_config.log_dir =
+          (path_config.config_path.parent_path() / "logs").string();
+    } else {
+      // Nenhum diretório privado foi resolvido. Desative o arquivo de log para
+      // impedir que logging.cpp use current_path()/logs (que pode ser /system/bin/logs).
+      log_config.app_name.clear();
+    }
   }
 
   rex::InitLogging(log_config);
@@ -306,16 +385,23 @@ bool ReXApp::ConstructRuntime(const PathConfig& paths) {
 }
 
 bool ReXApp::SetupPresentation() {
+  ReXAppStageLog("SetupPresentation entered");
   config_.gpu_plugin = REXCVAR_GET(gpu_plugin);
   config_.audio_factory = REX_AUDIO_BACKEND(rex::audio::sdl::SDLAudioSystem);
   config_.input_factory = REX_INPUT_BACKEND(rex::input::CreateDefaultInputSystem);
   config_.kernel_init = rex::kernel::InitializeKernel;
 
+  ReXAppStageLog("SetupPresentation: calling OnPreSetup");
   OnPreSetup(config_);
+  ReXAppStageLog("SetupPresentation: OnPreSetup returned; gpu_plugin='%s'; graphics_preconfigured=%s",
+                 config_.gpu_plugin.c_str(), config_.graphics ? "true" : "false");
 
   if (!config_.graphics && !config_.gpu_plugin.empty()) {
+    ReXAppStageLog("SetupPresentation: loading GPU plugin '%s'", config_.gpu_plugin.c_str());
     config_.graphics = rex::system::LoadGpuPlugin(config_.gpu_plugin);
     if (!config_.graphics) {
+      ReXAppStageLog("FAIL SetupPresentation: LoadGpuPlugin('%s') returned null",
+                     config_.gpu_plugin.c_str());
       // Fatal by design: no silent headless fallback.
       auto msg =
           fmt::format("Failed to load GPU plugin '{}'. See log for details.", config_.gpu_plugin);
@@ -326,19 +412,29 @@ bool ReXApp::SetupPresentation() {
   }
 
   if (config_.graphics) {
+    ReXAppStageLog("SetupPresentation: calling graphics->SetupPresentation");
     X_STATUS status = config_.graphics->SetupPresentation(&app_context());
+    ReXAppStageLog("SetupPresentation: graphics->SetupPresentation status=0x%08X",
+                   static_cast<unsigned int>(status));
     if (XFAILED(status)) {
+      ReXAppStageLog("FAIL SetupPresentation: graphics presentation setup failed status=0x%08X",
+                     static_cast<unsigned int>(status));
       REXLOG_ERROR("Graphics presentation setup failed: {:08X}", status);
       return false;
     }
+  } else {
+    ReXAppStageLog("SetupPresentation: no graphics system; native rendering mode");
   }
 
   // Create window
+  ReXAppStageLog("SetupPresentation: creating SDL window");
   window_ = rex::ui::Window::Create(app_context(), GetName(), 1280, 720);
   if (!window_) {
+    ReXAppStageLog("FAIL SetupPresentation: Window::Create returned null");
     REXLOG_ERROR("Failed to create window");
     return false;
   }
+  ReXAppStageLog("SetupPresentation: Window::Create succeeded");
 
   // Set window title with SDK build stamp
   std::string title = std::string(GetName()) + " " + REXGLUE_BUILD_TITLE;
@@ -355,7 +451,9 @@ bool ReXApp::SetupPresentation() {
       window_->SetFullscreen(rex::string::from_string<bool>(value, false));
     }
   });
-  window_->Open();
+  const bool window_opened = window_->Open();
+  ReXAppStageLog("SetupPresentation: Window::Open returned %s",
+                 window_opened ? "true" : "false");
 
   auto* graphics_system = config_.graphics.get();
   if (graphics_system && graphics_system->presenter()) {
