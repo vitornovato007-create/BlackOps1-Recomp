@@ -168,9 +168,20 @@ bool ReXApp::SetupEnvironment() {
                                         log_level_str, category_levels);
   if (log_file_cvar.empty()) {
     log_config.app_name = std::string(GetName());
-    // Android executa o processo com diretório do executável em /system/bin, que é somente leitura.
-    // Guarde os logs dentro da pasta privada de dados do usuário, que é gravável.
-    log_config.log_dir = (user_dir / "logs").string();
+    // Use o caminho FINAL após OnConfigurePaths(). No Android, o app define
+    // path_config.user_data_root com SDL_GetPrefPath(); a variável local user_dir
+    // foi calculada antes do callback e pode apontar para /system/bin (somente leitura).
+    // Usar user_dir aqui recria o crash ao tentar criar /system/bin/logs.
+    const auto& effective_user_dir = path_config.user_data_root;
+    if (!effective_user_dir.empty()) {
+      log_config.log_dir = (effective_user_dir / "logs").string();
+    } else if (!path_config.cache_root.empty()) {
+      // Último fallback gravável conhecido, também configurado pelo app Android.
+      log_config.log_dir = (path_config.cache_root / "logs").string();
+    } else {
+      // Não passe um caminho relativo que possa resolver para /system/bin/logs.
+      log_config.log_dir.clear();
+    }
   }
 
   rex::InitLogging(log_config);
