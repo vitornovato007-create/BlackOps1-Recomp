@@ -531,26 +531,37 @@ jobs:
           if "#include <rex/main_android.h>" not in text:
               raise SystemExit("ERRO: include esperado rex/main_android.h nao encontrado em threading_posix.cpp.")
 
-          # Bionic does not implement robust pthread mutexes. Keep the ordinary
-          # std::mutex path on Android; robust recovery remains enabled on Linux.
-          robust_guard = "#if REX_PLATFORM_LINUX\n"
-          replacements = [
-              (robust_guard + "    // Use robust mutexes so waits can recover if owner thread terminates.",
-               "#if REX_PLATFORM_LINUX && !defined(__ANDROID__)\n    // Use robust mutexes so waits can recover if owner thread terminates."),
-              (robust_guard + "    auto native_mutex = static_cast<pthread_mutex_t*>(mutex_.native_handle());",
-               "#if REX_PLATFORM_LINUX && !defined(__ANDROID__)\n    auto native_mutex = static_cast<pthread_mutex_t*>(mutex_.native_handle());"),
-              (robust_guard + "        auto native_mutex = static_cast<pthread_mutex_t*>(handles[i]->mutex_.native_handle());",
-               "#if REX_PLATFORM_LINUX && !defined(__ANDROID__)\n        auto native_mutex = static_cast<pthread_mutex_t*>(handles[i]->mutex_.native_handle());"),
-          ]
-          for old, new in replacements:
-              if old in text:
-                  text = text.replace(old, new, 1)
-              elif new not in text:
-                  raise SystemExit("ERRO: bloco de mutex robusto esperado nao encontrado em threading_posix.cpp.")
+          # Bionic does not implement robust pthread mutexes. Protect only
+          # Linux-specific robust-mutex sections, regardless of upstream comments
+          # or whitespace; keep all other Linux/POSIX code available to Android.
+          lines = text.splitlines(keepends=True)
+          patched_guards = 0
+          for index, line in enumerate(lines):
+              if line.strip() != "#if REX_PLATFORM_LINUX":
+                  continue
+              section = []
+              for following in lines[index + 1:index + 16]:
+                  if following.lstrip().startswith("#endif"):
+                      break
+                  section.append(following)
+              section_text = "".join(section)
+              if "native_mutex" in section_text or "PTHREAD_MUTEX_ROBUST" in section_text:
+                  lines[index] = line.replace(
+                      "#if REX_PLATFORM_LINUX",
+                      "#if REX_PLATFORM_LINUX && !defined(__ANDROID__)",
+                      1,
+                  )
+                  patched_guards += 1
+          text = "".join(lines)
+          if patched_guards < 3:
+              raise SystemExit(
+                  "ERRO: esperava proteger tres blocos de mutex robusto; "
+                  f"encontrei {patched_guards}. Nenhuma alteracao foi gravada."
+              )
           if "PTHREAD_MUTEX_ROBUST" not in text:
-              raise SystemExit("ERRO: patch inesperadamente removeu o codigo robusto Linux.")
+              raise SystemExit("ERRO: patch removeu inesperadamente o codigo robusto Linux.")
           if text.count("#if REX_PLATFORM_LINUX && !defined(__ANDROID__)") < 3:
-              raise SystemExit("ERRO: os tres caminhos de mutex robusto nao foram protegidos para Android.")
+              raise SystemExit("ERRO: os tres caminhos de mutex robusto nao foram protegidos.")
           threading.write_text(text, encoding="utf-8")
 
           header.parent.mkdir(parents=True, exist_ok=True)
