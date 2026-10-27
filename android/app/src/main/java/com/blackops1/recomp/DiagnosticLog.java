@@ -6,6 +6,7 @@ import android.util.Log;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -53,6 +54,31 @@ public final class DiagnosticLog {
                 Log.e(TAG, "Não foi possível gravar o log em arquivo", e);
             }
         }
+    }
+
+    /** Persiste o tombstone/trace nativo fornecido pelo Android após um crash. */
+    public static void appendNativeCrashTrace(Context context, String heading, String trace) {
+        String safeTrace = trace == null || trace.trim().isEmpty()
+                ? "(Android não disponibilizou o trace nativo para este encerramento.)"
+                : trace;
+        StringBuilder entry = new StringBuilder()
+                .append("\\n========== TRACE DE CRASH NATIVO ==========\\n")
+                .append('[').append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
+                        .format(new Date())).append("] [NATIVE-CRASH] ")
+                .append(heading == null ? "Crash nativo" : heading).append('\\n')
+                .append(safeTrace);
+        if (!safeTrace.endsWith("\\n")) entry.append('\\n');
+        entry.append("========== FIM DO TRACE NATIVO ==========\\n");
+        synchronized (LOCK) {
+            File file = getFile(context);
+            try (FileOutputStream out = new FileOutputStream(file, true)) {
+                out.write(entry.toString().getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            } catch (IOException e) {
+                Log.e(TAG, "Não foi possível salvar o trace nativo", e);
+            }
+        }
+        Log.e(TAG, heading == null ? "Crash nativo" : heading);
     }
 
     public static String readAll(Context context) throws IOException {
