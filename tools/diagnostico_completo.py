@@ -180,12 +180,12 @@ def main() -> int:
             print(f"[AVISO] CMake Android nao menciona/configura {token}")
 
     link_block = re.search(
-        r"target_link_libraries\\(blackops1_android PRIVATE(.*?)\\)",
+        r"target_link_libraries\(blackops1_android PRIVATE(.*?)\)",
         native_cmake,
         re.DOTALL,
     )
     if link_block and re.search(
-        r"\\brex::(?:ui|audio|input|gpu-xenos)\\b",
+        r"\brex::(?:ui|audio|input|gpu-xenos)\b",
         link_block.group(1),
     ):
         blockers.append(
