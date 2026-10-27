@@ -183,8 +183,9 @@ bool ReXApp::SetupEnvironment() {
       log_config.log_dir =
           (path_config.config_path.parent_path() / "logs").string();
     } else {
-      // Falha explícita: não permita que logging.cpp caia em current_path()/logs.
-      log_config.log_dir = "/data/local/tmp/blackops1-logs";
+      // Nenhum diretório privado foi resolvido. Desative o arquivo de log para
+      // impedir que logging.cpp use current_path()/logs (que pode ser /system/bin/logs).
+      log_config.app_name.clear();
     }
   }
 
