@@ -1,5 +1,7 @@
     #pragma once
     #include <filesystem>
+    #include <fstream>
+    #include <string>
     #include <memory>
     #include <string_view>
     #include <SDL3/SDL.h>
@@ -20,7 +22,25 @@
       void OnConfigurePaths(rex::PathConfig& paths) override {
         const char* internal = SDL_GetAndroidInternalStoragePath();
         if (internal && *internal) {
-          paths.game_data_root = std::filesystem::path(internal) / "blackops1";
+          const std::filesystem::path internal_root(internal);
+          const std::filesystem::path selected_root_file = internal_root / "runtime-game-root.txt";
+          std::ifstream selected_root_stream(selected_root_file);
+          std::string selected_root;
+          if (selected_root_stream && std::getline(selected_root_stream, selected_root)
+              && !selected_root.empty()) {
+            const std::filesystem::path candidate(selected_root);
+            std::error_code ec;
+            const auto executable = candidate / "default.xex";
+            if (std::filesystem::is_directory(candidate, ec) && !ec
+                && std::filesystem::is_regular_file(executable, ec) && !ec
+                && std::filesystem::file_size(executable, ec) > 0 && !ec) {
+              paths.game_data_root = candidate;
+            } else {
+              paths.game_data_root = internal_root / "blackops1";
+            }
+          } else {
+            paths.game_data_root = internal_root / "blackops1";
+          }
         }
         const char* pref = SDL_GetPrefPath("BlackOps1", "BlackOps1Recomp");
         if (pref && *pref) {
