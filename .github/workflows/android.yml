@@ -896,8 +896,30 @@ jobs:
             echo "::error::libblackops1_android.so nao declara a dependencia do runtime ReXGlue Debug."
             exit 1
           }
+          if grep -q 'libSDL3d[.]so' android-diagnostic/native-needed.txt; then
+            echo "::error::libblackops1_android.so ainda pede libSDL3d.so, que nao e carregada pelo SDLActivity."
+            exit 1
+          fi
 
-          echo "OK: SDL3 tem SONAME consistente, ReXGlue runtime e plugin Xenos Debug estao empacotados."
+          unzip -p "$APK" lib/arm64-v8a/librexruntimed.so > android-diagnostic/librexruntimed.so
+          readelf -d android-diagnostic/librexruntimed.so > android-diagnostic/runtime-needed.txt
+          grep -q 'libSDL3[.]so' android-diagnostic/runtime-needed.txt || {
+            echo "::error::librexruntimed.so nao declara a dependencia libSDL3.so."
+            exit 1
+          }
+          if grep -q 'libSDL3d[.]so' android-diagnostic/runtime-needed.txt; then
+            echo "::error::librexruntimed.so ainda pede libSDL3d.so."
+            exit 1
+          fi
+
+          unzip -p "$APK" lib/arm64-v8a/librexgpu-xenosd.so > android-diagnostic/librexgpu-xenosd.so
+          readelf -d android-diagnostic/librexgpu-xenosd.so > android-diagnostic/plugin-needed.txt
+          grep -q 'librexruntimed[.]so' android-diagnostic/plugin-needed.txt || {
+            echo "::error::O plugin Xenos nao foi ligado ao mesmo runtime ReXGlue."
+            exit 1
+          }
+
+          echo "OK: SDL3 tem SONAME consistente; runtime, STL e plugin Xenos Debug estao empacotados."
 
       - name: Auditar alinhamento ELF para paginas Android de 16 KiB
         shell: bash
