@@ -28,6 +28,8 @@ import android.widget.Toast;
 import com.blackops1.recomp.importer.IsoImportManager;
 
 import java.io.File;
+import java.io.InputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -284,11 +286,42 @@ public final class MainActivity extends Activity {
                 long timestamp = info.getTimestamp();
                 if (timestamp <= lastSeen) continue;
                 newest = Math.max(newest, timestamp);
-                DiagnosticLog.error(this, "ENCERRAMENTO ANTERIOR: processo=" + info.getProcessName()
+                String heading = "ENCERRAMENTO ANTERIOR: processo=" + info.getProcessName()
                         + ", motivo=" + info.getReason() + ", status=" + info.getStatus()
-                        + ", pid=" + info.getPid() + ", descrição=" + info.getDescription(), null);
+                        + ", pid=" + info.getPid() + ", descrição=" + info.getDescription()
+                        + ", PSS=" + info.getPss() + " KB, RSS=" + info.getRss() + " KB";
+                DiagnosticLog.error(this, heading, null);
+
+                // Android 11+ pode fornecer o tombstone/stack trace do crash nativo.
+                // Guardamos esse conteúdo no mesmo TXT exportável pelo launcher.
+                try (InputStream traceStream = info.getTraceInputStream()) {
+                    if (traceStream != null) {
+                        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+                        byte[] chunk = new byte[8192];
+                        int count;
+                        int total = 0;
+                        final int maxTraceBytes = 2 * 1024 * 1024;
+                        while ((count = traceStream.read(chunk)) != -1 && total < maxTraceBytes) {
+                            int accepted = Math.min(count, maxTraceBytes - total);
+                            buffer.write(chunk, 0, accepted);
+                            total += accepted;
+                        }
+                        String trace = new String(buffer.toByteArray(), StandardCharsets.UTF_8);
+                        DiagnosticLog.appendNativeCrashTrace(this, heading
+                                + "; bytes_lidos=" + total
+                                + (total >= maxTraceBytes ? " (limite de 2 MiB atingido)" : ""), trace);
+                    } else {
+                        DiagnosticLog.info(this, "Android não disponibilizou trace para o encerramento: "
+                                + info.getProcessName() + "; motivo=" + info.getReason());
+                    }
+                } catch (Throwable traceError) {
+                    DiagnosticLog.error(this, "Falha ao ler trace/tombstone do processo "
+                            + info.getProcessName(), traceError);
+                }
             }
-            if (newest > lastSeen) getPreferences(MODE_PRIVATE).edit().putLong("last_exit_timestamp", newest).apply();
+            if (newest > lastSeen) {
+                getPreferences(MODE_PRIVATE).edit().putLong("last_exit_timestamp", newest).apply();
+            }
         } catch (Throwable t) {
             DiagnosticLog.error(this, "Falha ao consultar histórico de encerramentos Android.", t);
         }
