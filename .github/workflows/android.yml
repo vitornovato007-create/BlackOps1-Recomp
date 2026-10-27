@@ -537,13 +537,13 @@ jobs:
           # Normalize every top-level Linux guard in this POSIX file instead.
           android_safe_guard = "#if REX_PLATFORM_LINUX && !defined(__ANDROID__)"
           text = re.sub(
-              r"(?m)^#if REX_PLATFORM_LINUX\\s*$",
+              r"(?m)^#if REX_PLATFORM_LINUX\s*$",
               android_safe_guard,
               text,
           )
 
           # Idempotent verification: no unguarded exact Linux guard may remain.
-          if re.search(r"(?m)^#if REX_PLATFORM_LINUX\\s*$", text):
+          if re.search(r"(?m)^#if REX_PLATFORM_LINUX\s*$", text):
               raise SystemExit(
                   "ERRO: ainda existe um guard Linux que nao exclui Android."
               )
