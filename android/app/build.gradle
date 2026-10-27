@@ -12,6 +12,14 @@ android {
         prefab true
     }
 
+    // Usar as classes Java do mesmo checkout SDL3 compilado pelo CMake.
+    // Evita misturar SDLActivity de um AAR separado com outra libSDL3.so.
+    sourceSets {
+        main {
+            java.srcDir file("${rootProject.projectDir.parentFile}/rexglue-sdk/thirdparty/sdl3/android-project/app/src/main/java")
+        }
+    }
+
     defaultConfig {
         applicationId 'com.blackops1.recomp'
         minSdk 29
@@ -49,6 +57,4 @@ android {
     }
 }
 
-dependencies {
-    implementation files('libs/SDL3-3.4.18.aar')
-}
+// SDL3 Java agora vem do mesmo checkout do SDL3 nativo; nao adicionar o AAR.
