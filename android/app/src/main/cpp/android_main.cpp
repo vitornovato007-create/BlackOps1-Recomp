@@ -7,6 +7,7 @@
 #include <jni.h>
 
 #include <cstdlib>
+#include <exception>
 #include <map>
 #include <string>
 #include <utility>
@@ -157,38 +158,60 @@ extern "C" __attribute__((visibility("default"))) int SDL_main(int argc, char* a
 
     SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
 
-    rex::ui::SDLWindowedAppContext app_context;
-    if (!app_context.Initialize()) {
-      BO1_LOGE("[BO1-STAGE] SDLWindowedAppContext::Initialize falhou.");
-    } else {
-      auto creator = rex::ui::WindowedApp::GetCreator("blackops1");
-      if (!creator) {
-        BO1_LOGE("[BO1-STAGE] App 'blackops1' nao registrada; confira REX_DEFINE_APP.");
+    BO1LogStage("[BO1-STAGE] Criando SDLWindowedAppContext");
+    try {
+      rex::ui::SDLWindowedAppContext app_context;
+      BO1LogStage("[BO1-STAGE] Chamando SDLWindowedAppContext::Initialize");
+      if (!app_context.Initialize()) {
+        BO1LogStage("[BO1-ERROR] SDLWindowedAppContext::Initialize retornou false");
+        BO1_LOGE("[BO1-STAGE] SDLWindowedAppContext::Initialize falhou.");
       } else {
-        auto app = creator(app_context);
-        const auto& positional_names = app->GetPositionalOptions();
-        const size_t count = remaining.size() < positional_names.size()
-                                 ? remaining.size()
-                                 : positional_names.size();
-        std::map<std::string, std::string> parsed;
-        for (size_t i = 0; i < count; ++i) {
-          parsed[positional_names[i]] = remaining[i];
-        }
-        app->SetParsedArguments(std::move(parsed));
-
-        BO1_LOGI("[BO1-STAGE] Inicializando BlackOps1App.");
-        const bool initialized = app->OnInitialize();
-        BO1_LOGI("[BO1-STAGE] BlackOps1App::OnInitialize retornou %s.",
-                 initialized ? "true" : "false");
-        if (initialized) {
-          BO1LogStage("[BO1-STAGE] RunMainMessageLoop starting");
-          result = app_context.RunMainMessageLoop();
-          BO1LogStage("[BO1-STAGE] RunMainMessageLoop returned=%d", result);
+        BO1LogStage("[BO1-STAGE] SDLWindowedAppContext::Initialize retornou true");
+        BO1LogStage("[BO1-STAGE] Procurando app registrada: blackops1");
+        auto creator = rex::ui::WindowedApp::GetCreator("blackops1");
+        if (!creator) {
+          BO1LogStage("[BO1-ERROR] App blackops1 nao registrada; confira REX_DEFINE_APP");
+          BO1_LOGE("[BO1-STAGE] App 'blackops1' nao registrada; confira REX_DEFINE_APP.");
         } else {
-          result = EXIT_FAILURE;
+          BO1LogStage("[BO1-STAGE] Criador da app encontrado; construindo BlackOps1App");
+          auto app = creator(app_context);
+          BO1LogStage("[BO1-STAGE] BlackOps1App criada; lendo argumentos posicionais");
+          const auto& positional_names = app->GetPositionalOptions();
+          const size_t count = remaining.size() < positional_names.size()
+                                   ? remaining.size()
+                                   : positional_names.size();
+          std::map<std::string, std::string> parsed;
+          for (size_t i = 0; i < count; ++i) {
+            parsed[positional_names[i]] = remaining[i];
+          }
+          app->SetParsedArguments(std::move(parsed));
+
+          BO1LogStage("[BO1-STAGE] Chamando BlackOps1App::OnInitialize");
+          const bool initialized = app->OnInitialize();
+          BO1LogStage("[BO1-STAGE] BlackOps1App::OnInitialize retornou %s",
+                      initialized ? "true" : "false");
+          if (initialized) {
+            BO1LogStage("[BO1-STAGE] Chamando RunMainMessageLoop");
+            result = app_context.RunMainMessageLoop();
+            BO1LogStage("[BO1-STAGE] RunMainMessageLoop retornou codigo=%d", result);
+          } else {
+            result = EXIT_FAILURE;
+            BO1LogStage("[BO1-ERROR] OnInitialize retornou false; loop principal nao iniciado");
+          }
+          BO1LogStage("[BO1-STAGE] Chamando BlackOps1App::InvokeOnDestroy");
+          app->InvokeOnDestroy();
+          BO1LogStage("[BO1-STAGE] BlackOps1App::InvokeOnDestroy terminou");
         }
-        app->InvokeOnDestroy();
       }
+    } catch (const std::exception& error) {
+      BO1LogStage("[BO1-EXCEPTION] std::exception durante inicializacao/loop: %s",
+                  error.what());
+      BO1_LOGE("[BO1-EXCEPTION] %s", error.what());
+      result = EXIT_FAILURE;
+    } catch (...) {
+      BO1LogStage("[BO1-EXCEPTION] Excecao C++ desconhecida durante inicializacao/loop");
+      BO1_LOGE("[BO1-EXCEPTION] Excecao C++ desconhecida");
+      result = EXIT_FAILURE;
     }
   }
 
