@@ -224,6 +224,16 @@ add_custom_command(TARGET blackops1_android POST_BUILD
 # linke o plugin ao app: copie-o com o nome original calculado pelo SDK.
 if(TARGET rexgpu-xenos)
   add_dependencies(blackops1_android rexgpu-xenos)
+  # O POST_BUILD do plugin cobre builds limpos; esta copia adicional no app
+  # cobre rebuilds incrementais quando o app muda mas o plugin nao.
+  add_custom_command(TARGET blackops1_android POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${BLACKOPS1_JNILIBS_DIR}"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "$<TARGET_FILE:rexgpu-xenos>"
+            "${BLACKOPS1_JNILIBS_DIR}/$<TARGET_FILE_NAME:rexgpu-xenos>"
+    COMMENT "Confirmando plugin ReXGlue Xenos em nativeLibraryDir"
+    VERBATIM
+  )
   add_custom_command(TARGET rexgpu-xenos POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${BLACKOPS1_JNILIBS_DIR}"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
