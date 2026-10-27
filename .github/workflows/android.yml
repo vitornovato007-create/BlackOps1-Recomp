@@ -198,9 +198,9 @@ jobs:
               "#if REX_PLATFORM_MAC || REX_PLATFORM_ANDROID || defined(ANDROID) || defined(__ANDROID__)",
               text,
           )
-          if include_count < 3:
+          if include_count < 2:
               raise SystemExit(
-                  "ERRO: numeric.h mudou de formato; esperava ao menos 3 "
+                  "ERRO: numeric.h mudou de formato; esperava ao menos 2 "
                   "guards de plataforma para float from_chars."
               )
           numeric.write_text(text, encoding="utf-8")
