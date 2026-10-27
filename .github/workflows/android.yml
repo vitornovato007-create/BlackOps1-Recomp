@@ -196,7 +196,7 @@ jobs:
           # REX_PLATFORM_ANDROID. Este passo tambem aceita o SDK original,
           # tornando a verificacao idempotente em ambos os formatos.
           text = numeric.read_text(encoding="utf-8")
-          text, changed_count = re.subn(
+          text, _ = re.subn(
               r"(?m)^#if REX_PLATFORM_MAC\\s*$",
               "#if REX_PLATFORM_MAC || REX_PLATFORM_ANDROID",
               text,
@@ -204,7 +204,7 @@ jobs:
           already_patched_count = text.count(
               "#if REX_PLATFORM_MAC || REX_PLATFORM_ANDROID"
           )
-          guard_count = changed_count + already_patched_count
+          guard_count = already_patched_count
           if guard_count < 3:
               raise SystemExit(
                   "ERRO: numeric.h nao contem os guards esperados para "
@@ -242,9 +242,9 @@ jobs:
           PYTHON
 
           echo "Confirmando alteracoes aplicadas:"
-          grep -n -E 'portable_float_from_chars|REX_PLATFORM_MAC.*ANDROID|defined\\(__ANDROID__\\)' \
+          grep -n -E 'portable_float_from_chars|REX_PLATFORM_MAC.*REX_PLATFORM_ANDROID' \
             rexglue-sdk/include/rex/string/numeric.h
-          grep -n -E 'defined\\(__ANDROID__\\)|defined\\(ANDROID\\)|clock_time_conversion' \
+          grep -n -E '_LIBCPP_VERSION|clock_time_conversion' \
             rexglue-sdk/include/rex/chrono/chrono.h | head -20
 
       - name: Corrigir dependencias Linux no ReXGlue para Android
