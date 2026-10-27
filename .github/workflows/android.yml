@@ -449,7 +449,7 @@ jobs:
               if "add_compile_definitions(REX_PLATFORM_ANDROID=1)" not in block:
                   block = block.replace(
                       "elseif(ANDROID)",
-                      "elseif(ANDROID)\\n    add_compile_definitions(REX_PLATFORM_ANDROID=1)",
+                      "elseif(ANDROID)\n    add_compile_definitions(REX_PLATFORM_ANDROID=1)",
                       1,
                   )
                   content = content[:start] + block + content[end:]
