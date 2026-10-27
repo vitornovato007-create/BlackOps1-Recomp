@@ -11,6 +11,9 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.DocumentsContract;
+import android.provider.Settings;
 import android.provider.OpenableColumns;
 import android.view.Gravity;
 import android.view.View;
@@ -36,9 +39,12 @@ import java.util.List;
 public final class MainActivity extends Activity {
     private static final int REQUEST_ISO = 4101;
     private static final int REQUEST_EXPORT_LOG = 4102;
+    private static final int REQUEST_FOLDER = 4103;
     private static final String PREFS = "blackops1_launcher";
     private static final String KEY_URI = "selected_iso_uri";
     private static final String KEY_NAME = "selected_iso_name";
+    private static final String KEY_FOLDER_PATH = "selected_game_folder_path";
+    private static final String RUNTIME_ROOT_FILE = "runtime-game-root.txt";
 
     private final int bg = Color.rgb(13, 16, 18);
     private final int panel = Color.rgb(25, 30, 31);
@@ -53,6 +59,7 @@ public final class MainActivity extends Activity {
     private ProgressBar progress;
     private Button playButton;
     private Button selectButton;
+    private Button selectFolderButton;
     private boolean importing;
 
     @Override
@@ -121,7 +128,7 @@ public final class MainActivity extends Activity {
         hero.addView(label, matchWrap());
 
         TextView instructions = new TextView(this);
-        instructions.setText("Selecione uma ISO do seu jogo. O launcher vai preparar os arquivos antes de iniciar o runtime.");
+        instructions.setText("Escolha uma ISO para extrair ou selecione uma pasta comum que já contenha os arquivos do jogo. A pasta selecionada será usada diretamente, sem copiar o conteúdo.");
         instructions.setTextColor(text);
         instructions.setTextSize(15);
         instructions.setLineSpacing(dp(3), 1.0f);
@@ -130,7 +137,7 @@ public final class MainActivity extends Activity {
         hero.addView(instructions, instLp);
 
         isoName = new TextView(this);
-        isoName.setText("Nenhuma ISO selecionada");
+        isoName.setText("Nenhuma ISO ou pasta selecionada");
         isoName.setTextColor(muted);
         isoName.setTextSize(13);
         isoName.setMaxLines(3);
@@ -145,6 +152,12 @@ public final class MainActivity extends Activity {
         selectLp.topMargin = dp(14);
         hero.addView(selectButton, selectLp);
         selectButton.setOnClickListener(v -> chooseIso());
+
+        selectFolderButton = makeButton("SELECIONAR PASTA DO JOGO", false);
+        LinearLayout.LayoutParams folderLp = matchWrap();
+        folderLp.topMargin = dp(8);
+        hero.addView(selectFolderButton, folderLp);
+        selectFolderButton.setOnClickListener(v -> chooseGameFolder());
 
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setMax(100);
@@ -281,6 +294,134 @@ public final class MainActivity extends Activity {
         }
     }
 
+
+    private void chooseGameFolder() {
+        if (importing) return;
+        if (android.os.Build.VERSION.SDK_INT >= 30 && !Environment.isExternalStorageManager()) {
+            try {
+                DiagnosticLog.info(this, "Acesso amplo a arquivos necessário para o runtime nativo ler a pasta diretamente.");
+                Intent settings = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        Uri.parse("package:" + getPackageName()));
+                startActivity(settings);
+                status.setText("PERMISSÃO NECESSÁRIA");
+                statusDetail.setText("Ative o acesso para gerenciar todos os arquivos nas configurações do Android. Depois volte e toque em SELECIONAR PASTA novamente.");
+            } catch (Throwable t) {
+                DiagnosticLog.error(this, "Não foi possível abrir a tela de acesso a arquivos.", t);
+                statusDetail.setText("Não foi possível abrir as configurações de arquivos: " + t);
+            }
+            return;
+        }
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+                | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
+        startActivityForResult(intent, REQUEST_FOLDER);
+    }
+
+    private void handleSelectedFolder(Uri treeUri) {
+        try {
+            try { getContentResolver().takePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION); }
+            catch (SecurityException ignored) { }
+            String path = resolveLocalTreePath(treeUri);
+            if (path == null) {
+                throw new java.io.IOException("Esta pasta não pertence ao armazenamento local compartilhado. Escolha uma pasta em Armazenamento interno; provedores de nuvem/USB não podem ser usados diretamente pelo runtime nativo.");
+            }
+            File root = new File(path).getCanonicalFile();
+            if (!root.isDirectory() || !root.canRead()) {
+                throw new java.io.IOException("A pasta selecionada não existe ou não pode ser lida pelo aplicativo: " + root);
+            }
+            File xex = new File(root, "default.xex");
+            if (!xex.isFile() || !xex.canRead() || xex.length() <= 0) {
+                throw new java.io.IOException("default.xex precisa existir, ser legível e ter tamanho maior que zero na raiz da pasta.");
+            }
+            getPreferences(MODE_PRIVATE).edit().putString(KEY_FOLDER_PATH, root.getAbsolutePath())
+                    .remove(KEY_URI).remove(KEY_NAME).apply();
+            isoName.setText("Pasta: " + root.getAbsolutePath());
+            playButton.setEnabled(false);
+            setImporting(true);
+            status.setText("VALIDANDO PASTA");
+            statusDetail.setText("Verificando os arquivos da pasta original sem copiá-los…");
+            DiagnosticLog.info(this, "Pasta de jogo selecionada: " + root.getAbsolutePath());
+            refreshDiagnosticView();
+            GameFolderValidator.validate(this, root, new GameFolderValidator.Callback() {
+                @Override public void onProgress(String message, int checked, int total) {
+                    runOnUiThread(() -> {
+                        if (isFinishing()) return;
+                        status.setText("VALIDANDO PASTA");
+                        statusDetail.setText(message);
+                        if (total > 0) {
+                            progress.setIndeterminate(false);
+                            progress.setProgress((int) Math.min(99, checked * 100L / total));
+                        } else progress.setIndeterminate(true);
+                        refreshDiagnosticView();
+                    });
+                }
+                @Override public void onComplete(File folder, int count, String message) {
+                    runOnUiThread(() -> {
+                        if (isFinishing()) return;
+                        setImporting(false);
+                        persistRuntimeRoot(folder);
+                        status.setText("PASTA VALIDADA");
+                        statusDetail.setText(message + "\nO runtime lerá diretamente desta pasta, sem duplicar os arquivos.");
+                        progress.setProgress(100);
+                        playButton.setEnabled(true);
+                        DiagnosticLog.info(MainActivity.this, "VALIDAÇÃO DA PASTA APROVADA: " + folder + "; arquivos=" + count);
+                        refreshDiagnosticView();
+                    });
+                }
+                @Override public void onError(String message, Throwable error) {
+                    runOnUiThread(() -> {
+                        if (isFinishing()) return;
+                        setImporting(false);
+                        playButton.setEnabled(false);
+                        status.setText("FALHA NA VALIDAÇÃO DA PASTA");
+                        statusDetail.setText(message);
+                        DiagnosticLog.error(MainActivity.this, "FALHA NA VALIDAÇÃO DA PASTA: " + message, error);
+                        refreshDiagnosticView();
+                        new AlertDialog.Builder(MainActivity.this).setTitle("Pasta inválida")
+                                .setMessage(message).setPositiveButton("OK", null).show();
+                    });
+                }
+            });
+        } catch (Throwable t) {
+            DiagnosticLog.error(this, "Não foi possível usar a pasta selecionada.", t);
+            status.setText("PASTA NÃO SUPORTADA");
+            statusDetail.setText(t.getMessage() == null ? t.toString() : t.getMessage());
+            playButton.setEnabled(false);
+            refreshDiagnosticView();
+            new AlertDialog.Builder(this).setTitle("Não foi possível usar a pasta")
+                    .setMessage(t.getMessage() == null ? t.toString() : t.getMessage())
+                    .setPositiveButton("OK", null).show();
+        }
+    }
+
+    private String resolveLocalTreePath(Uri treeUri) throws Exception {
+        if (!"com.android.externalstorage.documents".equals(treeUri.getAuthority())) return null;
+        String documentId = DocumentsContract.getTreeDocumentId(treeUri);
+        int separator = documentId.indexOf(':');
+        if (separator <= 0) return null;
+        String volume = documentId.substring(0, separator);
+        String relative = documentId.substring(separator + 1);
+        File base = "primary".equalsIgnoreCase(volume)
+                ? Environment.getExternalStorageDirectory() : new File("/storage", volume);
+        File root = relative.isEmpty() ? base : new File(base, relative);
+        return root.getCanonicalPath();
+    }
+
+    private void persistRuntimeRoot(File root) {
+        try {
+            File target = new File(getFilesDir(), RUNTIME_ROOT_FILE);
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(target, false)) {
+                out.write(root.getCanonicalPath().getBytes(StandardCharsets.UTF_8));
+                out.flush();
+                out.getFD().sync();
+            }
+            DiagnosticLog.info(this, "Raiz do jogo configurada para o runtime: " + root.getCanonicalPath());
+        } catch (Throwable t) {
+            DiagnosticLog.error(this, "Falha ao gravar a raiz do jogo para o runtime.", t);
+        }
+    }
+
     private void chooseIso() {
         if (importing) return;
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
@@ -295,6 +436,10 @@ public final class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_FOLDER) {
+            if (resultCode == RESULT_OK && data != null && data.getData() != null) handleSelectedFolder(data.getData());
+            return;
+        }
         if (requestCode == REQUEST_EXPORT_LOG && resultCode == RESULT_OK && data != null && data.getData() != null) {
             writeDiagnosticExport(data.getData());
             return;
@@ -312,6 +457,7 @@ public final class MainActivity extends Activity {
         }
 
         String name = displayName(uri);
+        getPreferences(MODE_PRIVATE).edit().remove(KEY_FOLDER_PATH).apply();
         isoName.setText(name);
         getPreferences(MODE_PRIVATE).edit().putString(KEY_URI, uri.toString())
                 .putString(KEY_NAME, name).apply();
@@ -360,6 +506,7 @@ public final class MainActivity extends Activity {
                     status.setText("ARQUIVOS VALIDADOS");
                     statusDetail.setText(message + "\nO runtime ainda não foi iniciado.");
                     playButton.setEnabled(new File(gameDirectory, "default.xex").isFile());
+                    persistRuntimeRoot(gameDirectory);
                     Toast.makeText(MainActivity.this, "Preparação concluída", Toast.LENGTH_SHORT).show();
                 });
             }
@@ -387,15 +534,19 @@ public final class MainActivity extends Activity {
     private void refreshSavedGame() {
         SharedPreferences prefs = getPreferences(MODE_PRIVATE);
         String name = prefs.getString(KEY_NAME, null);
-        File defaultXex = new File(new File(getFilesDir(), "blackops1"), "default.xex");
+        String selectedFolder = prefs.getString(KEY_FOLDER_PATH, null);
+        File gameRoot = selectedFolder == null ? new File(getFilesDir(), "blackops1") : new File(selectedFolder);
+        File defaultXex = new File(gameRoot, "default.xex");
+        if (selectedFolder != null) name = "Pasta: " + selectedFolder;
         if (name != null) isoName.setText(name);
-        if (defaultXex.isFile()) {
+        if (defaultXex.isFile() && defaultXex.canRead() && defaultXex.length() > 0) {
+            persistRuntimeRoot(gameRoot);
             status.setText("ARQUIVOS PREPARADOS");
-            statusDetail.setText("Os arquivos extraídos estão disponíveis neste dispositivo.");
+            statusDetail.setText(selectedFolder == null ? "Os arquivos extraídos estão disponíveis neste dispositivo." : "Pasta original validada e selecionada diretamente; nenhum arquivo foi copiado.");
             playButton.setEnabled(true);
         } else {
             status.setText("AGUARDANDO ARQUIVO");
-            statusDetail.setText("Selecione uma ISO compatível para preparar os arquivos.");
+            statusDetail.setText("Selecione uma ISO ou uma pasta local que contenha default.xex na raiz.");
             playButton.setEnabled(false);
         }
     }
@@ -403,13 +554,16 @@ public final class MainActivity extends Activity {
     private void launchRuntime() {
         DiagnosticLog.info(this, "Usuário tocou em JOGAR; verificando executável e abrindo GameActivity.");
         refreshDiagnosticView();
-        File defaultXex = new File(new File(getFilesDir(), "blackops1"), "default.xex");
-        if (!defaultXex.isFile()) {
+        String selectedFolder = getPreferences(MODE_PRIVATE).getString(KEY_FOLDER_PATH, null);
+        File gameRoot = selectedFolder == null ? new File(getFilesDir(), "blackops1") : new File(selectedFolder);
+        File defaultXex = new File(gameRoot, "default.xex");
+        if (!defaultXex.isFile() || !defaultXex.canRead() || defaultXex.length() <= 0) {
             playButton.setEnabled(false);
             status.setText("JOGO NÃO PREPARADO");
-            statusDetail.setText("Selecione a ISO e aguarde a extração terminar antes de jogar.");
+            statusDetail.setText("Selecione uma ISO ou valide novamente a pasta do jogo antes de jogar.");
             return;
         }
+        persistRuntimeRoot(gameRoot);
         Intent intent = new Intent(this, GameActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
@@ -435,6 +589,7 @@ public final class MainActivity extends Activity {
     private void setImporting(boolean value) {
         importing = value;
         selectButton.setEnabled(!value);
+        if (selectFolderButton != null) selectFolderButton.setEnabled(!value);
         playButton.setEnabled(false);
         progress.setVisibility(value ? View.VISIBLE : View.GONE);
         progress.setIndeterminate(value);
