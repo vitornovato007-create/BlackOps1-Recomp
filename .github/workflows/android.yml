@@ -740,63 +740,40 @@ jobs:
           grep -n -A4 -B2 'filesystem_android.cpp' "$CMAKE_FILE"
           grep -n -E 'AndroidInitialize|IsAndroidContentUri|OpenAndroidContentFileDescriptor' "$TARGET"
 
-      - name: Corrigir selecao do app registrado no ReXGlue para Android
+      - name: Verificar entrada SDL3 e contexto Android do runtime
         shell: bash
         run: |
           set -euo pipefail
 
-          FILE="rexglue-sdk/src/ui/windowed_app_main_sdl.cpp"
-          test -f "$FILE"
+          SDL_JAVA="rexglue-sdk/thirdparty/sdl3/android-project/app/src/main/java/org/libsdl/app/SDLActivity.java"
+          RUNTIME_ENTRY="android/app/src/main/cpp/android_main.cpp"
+          APP_CMAKE="android/app/src/main/cpp/CMakeLists.txt"
+          APP_GRADLE="android/app/build.gradle"
 
-          python3 - "$FILE" <<'PYTHON'
-          import sys
-          from pathlib import Path
+          test -f "$SDL_JAVA" || {
+            echo "::error::SDLActivity.java nao encontrado no mesmo checkout SDL3 usado pelo CMake."
+            exit 1
+          }
+          test -f "$RUNTIME_ENTRY" || {
+            echo "::error::Entrada Android SDL_main ausente."
+            exit 1
+          }
+          grep -q 'android_main.cpp' "$APP_CMAKE"
+          grep -q 'thirdparty/sdl3/android-project/app/src/main/java' "$APP_GRADLE"
+          if grep -q 'SDL3-3.4.18.aar' "$APP_GRADLE"; then
+            echo "::error::O AAR SDL3 separado ainda esta declarado e pode reintroduzir bibliotecas SDL conflitantes."
+            exit 1
+          fi
 
-          path = Path(sys.argv[1])
-          content = path.read_text(encoding="utf-8")
+          grep -q 'SDL_main(int argc, char\* argv\[\])' "$RUNTIME_ENTRY"
+          grep -q 'SetAndroidApplicationContext' "$RUNTIME_ENTRY"
+          grep -q 'memory::AndroidInitialize' "$RUNTIME_ENTRY"
+          grep -q 'thread::AndroidInitialize' "$RUNTIME_ENTRY"
+          grep -q 'filesystem::AndroidInitialize' "$RUNTIME_ENTRY"
+          grep -q 'WindowedApp::GetCreator("blackops1")' "$RUNTIME_ENTRY"
 
-          # SDL's Android entry point must be declared through SDL_main.h.
-          # This maps main() to SDL_main(), which SDLActivity invokes from libmain.
-          if "#include <SDL3/SDL_main.h>" not in content:
-              platform_include = "#include <rex/platform.h>"
-              if platform_include not in content:
-                  raise SystemExit("ERRO: include rex/platform.h nao encontrado no entry point SDL.")
-              content = content.replace(
-                  platform_include,
-                  platform_include + "\n#if REX_PLATFORM_ANDROID\n#include <SDL3/SDL_main.h>\n#endif",
-                  1,
-              )
-
-          old = "    std::unique_ptr<rex::ui::WindowedApp> app = rex::ui::GetWindowedAppCreator()(app_context);"
-          new = """#if REX_PLATFORM_ANDROID
-              auto creator = rex::ui::WindowedApp::GetCreator("blackops1");
-              if (!creator) {
-                // Avoid relying on logging macros that vary across ReXGlue versions.
-                return EXIT_FAILURE;
-              }
-              std::unique_ptr<rex::ui::WindowedApp> app = creator(app_context);
-          #else
-              std::unique_ptr<rex::ui::WindowedApp> app = rex::ui::GetWindowedAppCreator()(app_context);
-          #endif"""
-          if "WindowedApp::GetCreator(\"blackops1\")" not in content:
-              if old not in content:
-                  raise SystemExit("ERRO: chamada original GetWindowedAppCreator nao encontrada.")
-              content = content.replace(old, new, 1)
-              path.write_text(content, encoding="utf-8")
-
-          check = path.read_text(encoding="utf-8")
-          if "WindowedApp::GetCreator(\"blackops1\")" not in check:
-              raise SystemExit("ERRO: selecao do app Android nao aplicada.")
-          if "#include <SDL3/SDL_main.h>" not in check:
-              raise SystemExit("ERRO: SDL_main.h nao foi integrado ao entry point Android.")
-          if "int main(int argc, char* argv[])" not in check:
-              raise SystemExit("ERRO: funcao main esperada nao encontrada no entry point SDL.")
-          if "XELOGE" in check:
-              raise SystemExit("ERRO: macro de log incompatível ainda presente.")
-          print("Android seleciona o app registrado blackops1; desktop preservado.")
-          PYTHON
-
-          grep -n -A8 -B2 'WindowedApp::GetCreator' "$FILE"
+          echo "OK: SDLActivity Java e SDL nativo vem do mesmo checkout."
+          echo "OK: SDL_main inicializa contexto Android/ReXGlue e seleciona blackops1."
 
       - name: Compilar APK ARM64
         shell: bash
@@ -834,7 +811,104 @@ jobs:
             exit 1
           fi
 
-          echo "OK: libSDL3.so e libblackops1_android.so estao no APK ARM64."
+          if unzip -l "$APK" | grep -qE 'lib/arm64-v8a/libSDL3d\\.so
+      - name: Salvar diagnostico do ambiente
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p android-diagnostic
+
+          {
+            echo "Diagnostico do ambiente Android"
+            date -u
+            java -version 2>&1 || true
+            python --version 2>&1 || true
+            gradle --version 2>&1 || true
+            echo "ANDROID_HOME=${ANDROID_HOME:-nao definido}"
+            ls "${ANDROID_HOME:-/nonexistent}/ndk" 2>&1 || true
+            cmake --version 2>&1 || true
+
+            echo "APKs encontrados:"
+            find android/app/build/outputs \
+              -type f -name "*.apk" -print 2>&1 || true
+
+            echo "Arquivos XISO encontrados:"
+            find thirdparty android/app/src/main/cpp \
+              -maxdepth 5 -iname '*xiso*' -type f -print 2>&1 || true
+          } > android-diagnostic/environment.txt
+
+      - name: Publicar diagnosticos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build-diagnostics
+          path: android-diagnostic/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Publicar APK ARM64
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BlackOps1-Android-ARM64-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+; then
+            echo "::error::libSDL3d.so inesperada no APK; a build deve usar apenas a libSDL3.so do checkout SDL3."
+            exit 1
+          fi
+
+          SDL_COUNT=$(unzip -l "$APK" | grep -cE 'lib/arm64-v8a/libSDL3\\.so
+      - name: Salvar diagnostico do ambiente
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p android-diagnostic
+
+          {
+            echo "Diagnostico do ambiente Android"
+            date -u
+            java -version 2>&1 || true
+            python --version 2>&1 || true
+            gradle --version 2>&1 || true
+            echo "ANDROID_HOME=${ANDROID_HOME:-nao definido}"
+            ls "${ANDROID_HOME:-/nonexistent}/ndk" 2>&1 || true
+            cmake --version 2>&1 || true
+
+            echo "APKs encontrados:"
+            find android/app/build/outputs \
+              -type f -name "*.apk" -print 2>&1 || true
+
+            echo "Arquivos XISO encontrados:"
+            find thirdparty android/app/src/main/cpp \
+              -maxdepth 5 -iname '*xiso*' -type f -print 2>&1 || true
+          } > android-diagnostic/environment.txt
+
+      - name: Publicar diagnosticos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build-diagnostics
+          path: android-diagnostic/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Publicar APK ARM64
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BlackOps1-Android-ARM64-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+ || true)
+          if [ "$SDL_COUNT" -ne 1 ]; then
+            echo "::error::Esperava exatamente uma libSDL3.so no APK; encontrei $SDL_COUNT."
+            exit 1
+          fi
+
+          echo "OK: uma libSDL3.so e libblackops1_android.so estao no APK; libSDL3d.so ausente."
 
       - name: Salvar diagnostico do ambiente
         if: always()
