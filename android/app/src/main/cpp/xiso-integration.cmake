@@ -33,6 +33,9 @@ add_library(blackops1_xiso SHARED
     "${XISO_BRIDGE_SOURCE}"
 )
 
+# Keep the independent ISO extractor compatible with 16 KiB Android page sizes.
+target_link_options(blackops1_xiso PRIVATE "-Wl,-z,max-page-size=16384")
+
 target_compile_options(blackops1_xiso PRIVATE
     -Wall
     -Wextra
