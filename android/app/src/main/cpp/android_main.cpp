@@ -37,13 +37,10 @@ bool InitializeAndroidReXGlue() {
     return false;
   }
 
-  // A Activity ja foi entregue ao SDL. Inicializamos apenas os
-  // subsistemas Android declarados por este checkout do ReXGlue.
-  env->DeleteLocalRef(activity);
-
-  // Validar o JavaVM como faz a entrada SDL3 do NFSMW-Recompiled-Mobile.
-  // Este checkout do ReXGlue nao expoe SetAndroidApplicationContext, por isso
-  // nao chamamos APIs exclusivas do fork NFS que nao existem neste SDK.
+  // Obter o JavaVM antes de liberar a referencia local da Activity.
+  // SDL_GetAndroidActivity() fornece a referencia que esta funcao deve soltar
+  // exatamente uma vez; usar DeleteLocalRef antes e depois de GetJavaVM seria
+  // uma liberacao dupla de uma referencia JNI invalida.
   JavaVM* java_vm = nullptr;
   if (env->GetJavaVM(&java_vm) != JNI_OK || !java_vm) {
     env->DeleteLocalRef(activity);
@@ -51,6 +48,10 @@ bool InitializeAndroidReXGlue() {
     return false;
   }
   env->DeleteLocalRef(activity);
+
+  // Este checkout atual nao expoe o contexto Android do fork NFSMW; a
+  // integracao equivalente precisa ser adicionada ao SDK e aplicada pelo
+  // workflow, nao simulada chamando APIs que nao existem.
 
   rex::memory::AndroidInitialize();
   rex::thread::AndroidInitialize();
