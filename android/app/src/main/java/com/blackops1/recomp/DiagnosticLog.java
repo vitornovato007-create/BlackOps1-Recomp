@@ -15,6 +15,7 @@ import java.util.Locale;
 public final class DiagnosticLog {
     private static final String TAG = "BlackOps1Diag";
     private static final Object LOCK = new Object();
+
     private DiagnosticLog() {}
 
     public static File getFile(Context context) {
@@ -61,13 +62,13 @@ public final class DiagnosticLog {
                 ? "(Android não disponibilizou o trace nativo para este encerramento.)"
                 : trace;
         StringBuilder entry = new StringBuilder()
-                .append("\\n========== TRACE DE CRASH NATIVO ==========\\n")
+                .append("\n========== TRACE DE CRASH NATIVO ==========\n")
                 .append('[').append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
                         .format(new Date())).append("] [NATIVE-CRASH] ")
-                .append(heading == null ? "Crash nativo" : heading).append('\\n')
+                .append(heading == null ? "Crash nativo" : heading).append('\n')
                 .append(safeTrace);
-        if (!safeTrace.endsWith("\\n")) entry.append('\\n');
-        entry.append("========== FIM DO TRACE NATIVO ==========\\n");
+        if (!safeTrace.endsWith("\n")) entry.append('\n');
+        entry.append("========== FIM DO TRACE NATIVO ==========\n");
         synchronized (LOCK) {
             File file = getFile(context);
             try (FileOutputStream out = new FileOutputStream(file, true)) {
