@@ -1,7 +1,11 @@
 package com.blackops1.recomp;
 
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.ParcelFileDescriptor;
 import android.util.Log;
+
+import java.io.FileNotFoundException;
 
 import org.libsdl.app.SDLActivity;
 
@@ -11,6 +15,24 @@ import org.libsdl.app.SDLActivity;
  */
 public final class GameActivity extends SDLActivity {
     private static final String TAG = "BlackOps1Runtime";
+
+    // The native ReXGlue Android bridge resolves this method through JNI.
+    // The current launcher extracts the ISO to a normal folder, but keeping
+    // the bridge available also supports content:// paths without a JNI lookup
+    // failure during Android context initialization.
+    private static volatile GameActivity currentInstance;
+
+    private static ParcelFileDescriptor openContentFd(String uriText, String mode)
+            throws FileNotFoundException {
+        GameActivity activity = currentInstance;
+        if (activity == null || uriText == null || uriText.isEmpty()) {
+            return null;
+        }
+
+        Uri uri = Uri.parse(uriText);
+        String openMode = (mode != null && mode.contains("w")) ? "w" : "r";
+        return activity.getContentResolver().openFileDescriptor(uri, openMode);
+    }
 
     @Override
     protected String[] getLibraries() {
@@ -24,6 +46,7 @@ public final class GameActivity extends SDLActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        currentInstance = this;
         DiagnosticLog.info(this, "GameActivity.onCreate: iniciando runtime; processo=" + android.os.Process.myPid());
         Thread.UncaughtExceptionHandler previousHandler = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((thread, error) -> {
@@ -57,5 +80,8 @@ public final class GameActivity extends SDLActivity {
     protected void onDestroy() {
         DiagnosticLog.info(this, "GameActivity.onDestroy; isFinishing=" + isFinishing());
         super.onDestroy();
+        if (currentInstance == this) {
+            currentInstance = null;
+        }
     }
 }
