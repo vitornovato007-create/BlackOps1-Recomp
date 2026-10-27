@@ -7,6 +7,7 @@
 
 #include <cstdlib>
 #include <map>
+#include <string>
 #include <utility>
 
 #include <rex/cvar.h>
