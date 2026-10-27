@@ -801,7 +801,7 @@ jobs:
           unzip -l "$APK" | grep -E 'lib/arm64-v8a/.*\.so$' || true
 
           if ! unzip -l "$APK" | grep -qE 'lib/arm64-v8a/libSDL3\.so$'; then
-            echo "::error::libSDL3.so ausente do APK ARM64. O aplicativo nao pode iniciar pela SDLActivity."
+            echo "::error::libSDL3.so ausente do APK ARM64. SDLActivity nao pode iniciar."
             exit 1
           fi
 
@@ -810,7 +810,19 @@ jobs:
             exit 1
           fi
 
-          if unzip -l "$APK" | grep -qE 'lib/arm64-v8a/libSDL3d\\.so
+          if unzip -l "$APK" | grep -qE 'lib/arm64-v8a/libSDL3d\.so$'; then
+            echo "::error::libSDL3d.so inesperada no APK; deve ser usada apenas a libSDL3.so do checkout SDL3."
+            exit 1
+          fi
+
+          SDL_COUNT=$(unzip -l "$APK" | grep -cE 'lib/arm64-v8a/libSDL3\.so$' || true)
+          if [ "$SDL_COUNT" -ne 1 ]; then
+            echo "::error::Esperava exatamente uma libSDL3.so no APK; encontrei $SDL_COUNT."
+            exit 1
+          fi
+
+          echo "OK: uma libSDL3.so e libblackops1_android.so estao no APK; libSDL3d.so ausente."
+
       - name: Salvar diagnostico do ambiente
         if: always()
         shell: bash
