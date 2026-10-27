@@ -444,7 +444,19 @@ jobs:
           block = content[start:end]
 
           if "elseif(ANDROID)" in block:
-              print("Deteccao Android ja existe; nenhuma alteracao necessaria.")
+              # O patch comunitario pode criar o ramo Android sem definir a
+              # macro usada pelos fontes do SDK. Garanta ambos os requisitos.
+              if "add_compile_definitions(REX_PLATFORM_ANDROID=1)" not in block:
+                  block = block.replace(
+                      "elseif(ANDROID)",
+                      "elseif(ANDROID)\\n    add_compile_definitions(REX_PLATFORM_ANDROID=1)",
+                      1,
+                  )
+                  content = content[:start] + block + content[end:]
+                  path.write_text(content, encoding="utf-8")
+                  print("Macro REX_PLATFORM_ANDROID adicionada ao ramo Android existente.")
+              else:
+                  print("Ramo Android e macro ja existem; nenhuma alteracao necessaria.")
           else:
               old = "elseif(UNIX AND NOT APPLE)"
               if old not in block:
