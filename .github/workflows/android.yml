@@ -97,7 +97,7 @@ jobs:
             echo "Checkout existente incompleto."
             echo "Tentando obter ReXGlue com submodulos..."
             rm -rf rexglue-sdk
-            git clone --recursive "$REXGLUE_URL" rexglue-sdk
+            git clone --branch v0.10.0 --depth 1 --recursive "$REXGLUE_URL" rexglue-sdk
           fi
 
           test -f "rexglue-sdk/CMakeLists.txt"
@@ -108,6 +108,17 @@ jobs:
           echo "ReXGlue preparado."
           git -C rexglue-sdk log -1 --oneline
           git -C rexglue-sdk submodule status --recursive
+
+      - name: Aplicar suporte Android do SDK ReXGlue
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/android/apply_android_sdk_patch.py
+          test -f rexglue-sdk/include/rex/main_android.h
+          test -f rexglue-sdk/src/core/android_runtime.cpp
+          grep -q 'android_runtime.cpp' rexglue-sdk/src/core/CMakeLists.txt
+          grep -q 'SetAndroidApplicationContext' rexglue-sdk/include/rex/main_android.h
+          echo "OK: API de contexto JNI e runtime Android do ReXGlue preparados."
 
       - name: Corrigir e verificar diretorio de logs Android no ReXGlue
         shell: bash
@@ -781,13 +792,18 @@ jobs:
           fi
 
           grep -q 'SDL_main(int argc, char\* argv\[\])' "$RUNTIME_ENTRY"
+          grep -q 'SetAndroidApplicationContext' "$RUNTIME_ENTRY"
+          grep -q 'InitializeAndroidSystemForApplicationContext' "$RUNTIME_ENTRY"
+          grep -q 'ShutdownAndroidSystem' "$RUNTIME_ENTRY"
           grep -q 'memory::AndroidInitialize' "$RUNTIME_ENTRY"
           grep -q 'thread::AndroidInitialize' "$RUNTIME_ENTRY"
           grep -q 'filesystem::AndroidInitialize' "$RUNTIME_ENTRY"
           grep -q 'WindowedApp::GetCreator("blackops1")' "$RUNTIME_ENTRY"
+          grep -q 'openContentFd(String uriText, String mode)' android/app/src/main/java/com/blackops1/recomp/GameActivity.java
+          grep -q 'openContentFd' rexglue-sdk/src/core/android_runtime.cpp
 
           echo "OK: SDLActivity Java e SDL nativo vem do mesmo checkout."
-          echo "OK: SDL_main inicializa os subsistemas Android/ReXGlue e seleciona blackops1."
+          echo "OK: SDL_main fornece o contexto JNI, inicializa o sistema Android e seleciona blackops1."
 
       - name: Compilar APK ARM64
         shell: bash
