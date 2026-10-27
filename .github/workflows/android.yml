@@ -839,8 +839,7 @@ jobs:
 
           if [ ! -f "$APK" ]; then
             echo "::error::APK nao encontrado em $APK"
-            find android/app/build/outputs \
-              -type f -print 2>/dev/null || true
+            find android/app/build/outputs -type f -print 2>/dev/null || true
             exit 1
           fi
 
@@ -848,106 +847,24 @@ jobs:
           file "$APK"
 
           echo "Verificando bibliotecas nativas dentro do APK..."
-          unzip -l "$APK" | grep -E 'lib/arm64-v8a/.*\.so$' || true
+          unzip -l "$APK" | grep -E 'lib/arm64-v8a/.*[.]so$' || true
 
-          if ! unzip -l "$APK" | grep -qE 'lib/arm64-v8a/libSDL3\.so$'; then
+          if ! unzip -l "$APK" | grep -qE 'lib/arm64-v8a/libSDL3[.]so$'; then
             echo "::error::libSDL3.so ausente do APK ARM64. SDLActivity nao pode iniciar."
             exit 1
           fi
 
-          if ! unzip -l "$APK" | grep -qE 'lib/arm64-v8a/libblackops1_android\.so$'; then
+          if ! unzip -l "$APK" | grep -qE 'lib/arm64-v8a/libblackops1_android[.]so$'; then
             echo "::error::libblackops1_android.so ausente do APK ARM64."
             exit 1
           fi
 
-          if unzip -l "$APK" | grep -qE 'lib/arm64-v8a/libSDL3d\.so
-      - name: Auditar alinhamento ELF para paginas Android de 16 KiB
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 tools/android/audit_apk_alignment.py android/app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Salvar diagnostico do ambiente
-        if: always()
-        shell: bash
-        run: |
-          mkdir -p android-diagnostic
-
-          {
-            echo "Diagnostico do ambiente Android"
-            date -u
-            java -version 2>&1 || true
-            python --version 2>&1 || true
-            gradle --version 2>&1 || true
-            echo "ANDROID_HOME=$ANDROID_HOME"
-            ls "$ANDROID_HOME/ndk" 2>&1 || true
-            cmake --version 2>&1 || true
-
-            echo "APKs encontrados:"
-            find android/app/build/outputs \
-              -type f -name "*.apk" -print 2>&1 || true
-
-            echo "Arquivos XISO encontrados:"
-            find thirdparty android/app/src/main/cpp \
-              -maxdepth 5 -iname '*xiso*' -type f -print 2>&1 || true
-          } > android-diagnostic/environment.txt
-
-      - name: Publicar diagnosticos
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-build-diagnostics
-          path: android-diagnostic/
-          if-no-files-found: warn
-          retention-days: 7
-
-; then
+          if unzip -l "$APK" | grep -qE 'lib/arm64-v8a/libSDL3d[.]so$'; then
             echo "::error::libSDL3d.so ainda foi empacotada; SDLActivity precisa de libSDL3.so com SONAME correspondente."
             exit 1
           fi
 
-          SDL_COUNT=$(unzip -l "$APK" | grep -cE 'lib/arm64-v8a/libSDL3\.so
-      - name: Auditar alinhamento ELF para paginas Android de 16 KiB
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 tools/android/audit_apk_alignment.py android/app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Salvar diagnostico do ambiente
-        if: always()
-        shell: bash
-        run: |
-          mkdir -p android-diagnostic
-
-          {
-            echo "Diagnostico do ambiente Android"
-            date -u
-            java -version 2>&1 || true
-            python --version 2>&1 || true
-            gradle --version 2>&1 || true
-            echo "ANDROID_HOME=$ANDROID_HOME"
-            ls "$ANDROID_HOME/ndk" 2>&1 || true
-            cmake --version 2>&1 || true
-
-            echo "APKs encontrados:"
-            find android/app/build/outputs \
-              -type f -name "*.apk" -print 2>&1 || true
-
-            echo "Arquivos XISO encontrados:"
-            find thirdparty android/app/src/main/cpp \
-              -maxdepth 5 -iname '*xiso*' -type f -print 2>&1 || true
-          } > android-diagnostic/environment.txt
-
-      - name: Publicar diagnosticos
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-build-diagnostics
-          path: android-diagnostic/
-          if-no-files-found: warn
-          retention-days: 7
-
- || true)
+          SDL_COUNT=$(unzip -l "$APK" | grep -cE 'lib/arm64-v8a/libSDL3[.]so$' || true)
           if [ "$SDL_COUNT" -ne 1 ]; then
             echo "::error::Esperava exatamente uma libSDL3.so no APK; encontrei $SDL_COUNT."
             exit 1
@@ -966,11 +883,11 @@ jobs:
           unzip -p "$APK" lib/arm64-v8a/libblackops1_android.so > android-diagnostic/libblackops1_android.so
           readelf -d android-diagnostic/libblackops1_android.so > android-diagnostic/native-needed.txt
           cat android-diagnostic/native-needed.txt
-          grep -q 'libSDL3\.so' android-diagnostic/native-needed.txt || {
+          grep -q 'libSDL3[.]so' android-diagnostic/native-needed.txt || {
             echo "::error::libblackops1_android.so nao declara a dependencia libSDL3.so que SDLActivity carrega."
             exit 1
           }
-          grep -q 'librexruntimed\.so' android-diagnostic/native-needed.txt || {
+          grep -q 'librexruntimed[.]so' android-diagnostic/native-needed.txt || {
             echo "::error::libblackops1_android.so nao declara a dependencia do runtime ReXGlue Debug."
             exit 1
           }
