@@ -10,6 +10,7 @@
 #include <map>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
