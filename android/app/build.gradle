@@ -46,6 +46,14 @@ android {
         }
     }
 
+    // SDL3 pode gerar libSDL3d.so na variante Debug. SDLActivity carrega
+    // libSDL3.so; exclua a variante com sufixo d do APK final.
+    packaging {
+        jniLibs {
+            excludes += ['**/libSDL3d.so']
+        }
+    }
+
     buildTypes {
         debug {
             debuggable true
