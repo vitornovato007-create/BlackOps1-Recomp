@@ -3,20 +3,16 @@
 #include <SDL3/SDL_system.h>
 
 #include <android/log.h>
-#include <dlfcn.h>
 #include <jni.h>
 
 #include <cstdlib>
 #include <map>
-#include <string>
 #include <utility>
 
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
 #include <rex/logging.h>
-#include <rex/main_android.h>
 #include <rex/memory.h>
-#include <rex/system.h>
 #include <rex/thread.h>
 #include <rex/ui/windowed_app.h>
 #include <rex/ui/windowed_app_context_sdl.h>
@@ -27,19 +23,6 @@
 
 namespace {
 
-std::string GetNativeLibraryDirectory() {
-  Dl_info info{};
-  if (dladdr(reinterpret_cast<void*>(&GetNativeLibraryDirectory), &info) &&
-      info.dli_fname) {
-    const std::string path(info.dli_fname);
-    const size_t slash = path.find_last_of('/');
-    if (slash != std::string::npos) {
-      return path.substr(0, slash);
-    }
-  }
-  return {};
-}
-
 bool InitializeAndroidReXGlue() {
   auto* env = static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
   auto activity = static_cast<jobject>(SDL_GetAndroidActivity());
@@ -48,34 +31,15 @@ bool InitializeAndroidReXGlue() {
     return false;
   }
 
-  JavaVM* vm = nullptr;
-  if (env->GetJavaVM(&vm) != JNI_OK || !vm) {
-    env->DeleteLocalRef(activity);
-    BO1_LOGE("JNIEnv::GetJavaVM falhou.");
-    return false;
-  }
-
-  const std::string library_directory = GetNativeLibraryDirectory();
-  rex::SetAndroidApplicationContext(vm, activity, library_directory.c_str());
+  // A Activity ja foi entregue ao SDL. Inicializamos apenas os
+  // subsistemas Android declarados por este checkout do ReXGlue.
   env->DeleteLocalRef(activity);
 
-  // O SDK declara estes inicializadores, mas nao os executa automaticamente
-  // no Android. A memoria deve estar pronta antes de reservar a memoria guest.
   rex::memory::AndroidInitialize();
   rex::thread::AndroidInitialize();
   rex::filesystem::AndroidInitialize();
 
-  if (!rex::InitializeAndroidSystemForApplicationContext()) {
-    BO1_LOGE("ReXGlue rejeitou o contexto Android.");
-    rex::filesystem::AndroidShutdown();
-    rex::thread::AndroidShutdown();
-    rex::memory::AndroidShutdown();
-    rex::ShutdownAndroidSystem();
-    return false;
-  }
-
-  BO1_LOGI("Contexto Android/ReXGlue inicializado; nativeLibraryDir=%s",
-           library_directory.c_str());
+  BO1_LOGI("Subsistemas Android do ReXGlue inicializados.");
   return true;
 }
 
@@ -83,7 +47,6 @@ void ShutdownAndroidReXGlue() {
   rex::filesystem::AndroidShutdown();
   rex::thread::AndroidShutdown();
   rex::memory::AndroidShutdown();
-  rex::ShutdownAndroidSystem();
 }
 
 }  // namespace
