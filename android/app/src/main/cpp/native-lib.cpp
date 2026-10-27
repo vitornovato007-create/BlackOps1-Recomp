@@ -1,29 +1,20 @@
 #include <jni.h>
 #include <android/log.h>
-#include <atomic>
-#include <filesystem>
-#include <fstream>
 #include <mutex>
 #include <string>
-#include <SDL3/SDL.h>
 
 #define TAG "BlackOps1Android"
 
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM*, void*) {
-    __android_log_print(ANDROID_LOG_INFO, TAG, "[BO1-STAGE] JNI_OnLoad: blackops1_android carregada");
-    const char* internal = SDL_GetAndroidInternalStoragePath();
-    if (internal && *internal) {
-        std::error_code ec;
-        const auto log_dir = std::filesystem::path(internal) / "logs";
-        std::filesystem::create_directories(log_dir, ec);
-        if (!ec) {
-            std::ofstream output(log_dir / "blackops1-diagnostics.txt", std::ios::out | std::ios::app);
-            if (output) {
-                output << "[NATIVE-STAGE] [BO1-STAGE] JNI_OnLoad: blackops1_android carregada\n";
-                output.flush();
-            }
-        }
-    }
+    // Keep JNI_OnLoad minimal: SDL's Android context/storage helpers may not
+    // be safe to call while the shared library is still being loaded.
+    // Defer SDL and filesystem work until the runtime has initialized.
+    __android_log_print(
+        ANDROID_LOG_INFO,
+        TAG,
+        "[BO1-STAGE] JNI_OnLoad: blackops1_android carregada"
+    );
+
     return JNI_VERSION_1_6;
 }
 
