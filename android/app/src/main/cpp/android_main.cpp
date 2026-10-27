@@ -18,7 +18,6 @@
 #include <rex/logging.h>
 #include <rex/memory.h>
 #include <rex/thread.h>
-#include <rex/system.h>
 #include <rex/ui/windowed_app.h>
 #include <rex/ui/windowed_app_context_sdl.h>
 
@@ -42,28 +41,24 @@ bool InitializeAndroidReXGlue() {
   // subsistemas Android declarados por este checkout do ReXGlue.
   env->DeleteLocalRef(activity);
 
-  // Mesmo ciclo de vida usado pelo port Android de NFSMW-Recompiled-Mobile:
-  // inicializar os subsistemas de baixo nivel e depois validar a integracao
-  // do sistema ReXGlue com o contexto Android fornecido pelo SDL3.
+  // Validar o JavaVM como faz a entrada SDL3 do NFSMW-Recompiled-Mobile.
+  // Este checkout do ReXGlue nao expoe SetAndroidApplicationContext, por isso
+  // nao chamamos APIs exclusivas do fork NFS que nao existem neste SDK.
+  JavaVM* java_vm = nullptr;
+  if (env->GetJavaVM(&java_vm) != JNI_OK || !java_vm) {
+    env->DeleteLocalRef(activity);
+    BO1_LOGE("JNIEnv::GetJavaVM falhou; ReXGlue nao sera inicializado.");
+    return false;
+  }
+  env->DeleteLocalRef(activity);
+
   rex::memory::AndroidInitialize();
   rex::thread::AndroidInitialize();
   rex::filesystem::AndroidInitialize();
 
+  BO1LogStage("[BO1-ANDROID] SDL JNI context valido; JavaVM=%p", static_cast<void*>(java_vm));
   BO1LogStage("[BO1-ANDROID] memory/thread/filesystem AndroidInitialize concluido");
-
-#if REX_PLATFORM_ANDROID
-  if (!rex::InitializeAndroidSystemForApplicationContext()) {
-    BO1LogStage("[BO1-ERROR] InitializeAndroidSystemForApplicationContext retornou false");
-    BO1_LOGE("InitializeAndroidSystemForApplicationContext falhou.");
-    rex::filesystem::AndroidShutdown();
-    rex::thread::AndroidShutdown();
-    rex::memory::AndroidShutdown();
-    return false;
-  }
-#endif
-
-  BO1LogStage("[BO1-ANDROID] Integracao Android do ReXGlue validada");
-  BO1_LOGI("Subsistemas Android do ReXGlue inicializados e validados.");
+  BO1_LOGI("Subsistemas Android do ReXGlue inicializados.");
   return true;
 }
 
@@ -149,9 +144,6 @@ void LogVulkanDiagnostics() {
 }
 
 void ShutdownAndroidReXGlue() {
-#if REX_PLATFORM_ANDROID
-  rex::ShutdownAndroidSystem();
-#endif
   rex::filesystem::AndroidShutdown();
   rex::thread::AndroidShutdown();
   rex::memory::AndroidShutdown();
