@@ -92,6 +92,9 @@ target_include_directories(blackops1_android PRIVATE
   "${REXGLUE_SOURCE_DIR}/thirdparty"
 )
 
+# Android 15+ devices may use 16 KiB memory pages. Keep the runtime ELF compatible.
+target_link_options(blackops1_android PRIVATE "-Wl,-z,max-page-size=16384")
+
 target_compile_options(blackops1_android PRIVATE
   -Wall
   -Wextra
@@ -133,6 +136,13 @@ endif()
 get_target_property(SDL3_LINK_TARGET SDL3::SDL3 ALIASED_TARGET)
 if(NOT SDL3_LINK_TARGET)
   set(SDL3_LINK_TARGET SDL3::SDL3)
+endif()
+
+# SDLActivity loads libSDL3.so directly; align it for 16 KiB Android pages too.
+if(TARGET SDL3-shared)
+  target_link_options(SDL3-shared PRIVATE "-Wl,-z,max-page-size=16384")
+else()
+  target_link_options("${SDL3_LINK_TARGET}" PRIVATE "-Wl,-z,max-page-size=16384")
 endif()
 
 get_target_property(SDL3_LINK_TYPE "${SDL3_LINK_TARGET}" TYPE)
