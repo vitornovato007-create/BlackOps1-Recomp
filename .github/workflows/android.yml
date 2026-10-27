@@ -106,6 +106,17 @@ jobs:
           git -C rexglue-sdk log -1 --oneline
           git -C rexglue-sdk submodule status --recursive
 
+      - name: Corrigir e verificar diretorio de logs Android no ReXGlue
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/android/apply_logging_patch.py
+          grep -n -A16 -B2 'ANDROID_SAFE_LOG_DIR_PATCH' rexglue-sdk/src/ui/rex_app.cpp
+          if grep -Fq 'log_config.log_dir = (exe_dir / "logs").string();' rexglue-sdk/src/ui/rex_app.cpp; then
+            echo "::error::O caminho antigo /system/bin/logs continua no ReXGlue."
+            exit 1
+          fi
+
       - name: Aplicar backend de fibers Android ARM64
         shell: bash
         run: |
