@@ -81,6 +81,13 @@ target_link_libraries(blackops1_headers INTERFACE
   GPUOpen::VulkanMemoryAllocator
   spirv-tools-headers
 )
+# Propagar la identidad Android a TODAS las unidades de traduccion que incluyen
+# cabeceras ReXGlue. En especial, WindowedApp debe tener el mismo layout en la
+# app, los fuentes generados y librexruntime.so.
+target_compile_definitions(blackops1_headers INTERFACE
+  REX_PLATFORM_ANDROID=1
+  XE_UI_WINDOWED_APPS_IN_LIBRARY=1
+)
 
 # O SDK configura SDL3 como alvo compartilhado. Remover apenas o postfix de
 # SDL3, nao o postfix das outras bibliotecas do ReXGlue: o loader de GPU usa o
@@ -182,7 +189,6 @@ target_compile_options(blackops1_android PRIVATE
 
 target_compile_definitions(blackops1_android PRIVATE
   REXGLUE_BUILD_CONFIG="$<CONFIG>"
-  XE_UI_WINDOWED_APPS_IN_LIBRARY=1
 )
 
 target_link_libraries(blackops1_android PRIVATE
