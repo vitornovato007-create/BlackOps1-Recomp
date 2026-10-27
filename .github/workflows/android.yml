@@ -537,21 +537,27 @@ jobs:
           lines = text.splitlines(keepends=True)
           patched_guards = 0
           for index, line in enumerate(lines):
-              if line.strip() != "#if REX_PLATFORM_LINUX":
+              guard = line.strip()
+              original_guard = "#if REX_PLATFORM_LINUX"
+              android_safe_guard = "#if REX_PLATFORM_LINUX && !defined(__ANDROID__)"
+              # The community Android patch may already have rewritten these guards.
+              if guard not in (original_guard, android_safe_guard):
                   continue
               section = []
-              for following in lines[index + 1:index + 16]:
+              for following in lines[index + 1:index + 32]:
                   if following.lstrip().startswith("#endif"):
                       break
                   section.append(following)
               section_text = "".join(section)
-              if "native_mutex" in section_text or "PTHREAD_MUTEX_ROBUST" in section_text:
+              if "native_mutex" not in section_text and "PTHREAD_MUTEX_ROBUST" not in section_text:
+                  continue
+              if guard == original_guard:
                   lines[index] = line.replace(
-                      "#if REX_PLATFORM_LINUX",
-                      "#if REX_PLATFORM_LINUX && !defined(__ANDROID__)",
+                      original_guard,
+                      android_safe_guard,
                       1,
                   )
-                  patched_guards += 1
+              patched_guards += 1
           text = "".join(lines)
           if patched_guards < 3:
               raise SystemExit(
