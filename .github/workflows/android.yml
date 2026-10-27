@@ -809,8 +809,13 @@ jobs:
           grep -q 'WindowedApp::GetCreator("blackops1")' "$RUNTIME_ENTRY"
           grep -q 'openContentFd(String uriText, String mode)' android/app/src/main/java/com/blackops1/recomp/GameActivity.java
           grep -q 'openContentFd' rexglue-sdk/src/core/android_runtime.cpp
+          grep -q 'DEBUG_POSTFIX ""' "$APP_CMAKE"
+          grep -q 'add_custom_target(blackops1_stage_gpu_plugin' "$APP_CMAKE"
+          grep -q 'REX_PLATFORM_ANDROID=1' "$APP_CMAKE"
+          grep -q 'XE_UI_WINDOWED_APPS_IN_LIBRARY=1' "$APP_CMAKE"
 
           echo "OK: SDLActivity Java e SDL nativo vem do mesmo checkout."
+          echo "OK: ABI Android consistente e plugin Xenos staged em jniLibs."
           echo "OK: SDL_main fornece o contexto JNI, inicializa o sistema Android e seleciona blackops1."
 
       - name: Compilar APK ARM64
@@ -872,7 +877,7 @@ jobs:
 
           # OnInitialize carrega o plugin pelo nome que o SDK deriva da
           # configuracao CMake. assembleDebug precisa levar o postfix 'd'.
-          for library in librexruntimed.so librexgpu-xenosd.so; do
+          for library in librexruntimed.so librexgpu-xenosd.so libc++_shared.so; do
             if ! unzip -l "$APK" | grep -qE "lib/arm64-v8a/${library}$"; then
               echo "::error::Biblioteca obrigatoria ausente do APK ARM64: ${library}"
               exit 1
