@@ -139,7 +139,8 @@ def patch_app() -> None:
             continue
         if anchor not in text:
             fail(f"ReXApp: ponto de instrumentacao ausente: {anchor.strip()}")
-        text = replace_once(text, anchor, insertion, f"instrumentacao ReXApp {anchor.strip()}")
+        replacement = insertion if anchor in insertion else anchor + insertion
+        text = replace_once(text, anchor, replacement, f"instrumentacao ReXApp {anchor.strip()}")
     # Explicit false-path diagnostics, including paths before GPU setup.
     false_paths = [
         (
@@ -211,7 +212,8 @@ def patch_gpu_loader() -> None:
             continue
         if anchor not in text:
             fail(f"GPU loader: ponto de instrumentacao ausente: {anchor.strip()}")
-        text = replace_once(text, anchor, insertion, f"instrumentacao GPU {anchor.strip()}")
+        replacement = insertion if anchor in insertion else anchor + insertion
+        text = replace_once(text, anchor, replacement, f"instrumentacao GPU {anchor.strip()}")
     # Missing-file and ABI-mismatch paths need their own explicit final markers.
     if 'GpuPluginStageLog("FAIL plugin file does not exist:' not in text:
         text = text.replace(
