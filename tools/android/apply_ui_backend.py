@@ -112,12 +112,34 @@ if "SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER" not in window:
     if old_surface not in window:
         raise SystemExit("ERRO: ponto de insercao CreateSurfaceImpl nao encontrado.")
     window = window.replace(old_surface, new_surface, 1)
+
+# A previous Android patch may already have inserted the SDL property while
+# leaving the old one-argument constructor call behind. Do not use the
+# property's presence alone as proof that the constructor integration is done.
+# Normalize that stale call to the two-argument API implemented by
+# AndroidNativeWindowSurface(window, sdl_window).
+window, stale_calls = re.subn(
+    r"std::make_unique<AndroidNativeWindowSurface>\(\s*([A-Za-z_]\w*)\s*\)",
+    r"std::make_unique<AndroidNativeWindowSurface>(\1, sdl_window_)",
+    window,
+)
+surface_constructor_ok = bool(re.search(
+    r"std::make_unique<AndroidNativeWindowSurface>\(\s*[A-Za-z_]\w*\s*,\s*sdl_window_\s*\)",
+    window,
+))
+if not surface_constructor_ok:
+    raise SystemExit(
+        "ERRO: chamada AndroidNativeWindowSurface nao corresponde ao construtor "
+        "(ANativeWindow*, SDL_Window*) esperado."
+    )
+
 window_path.write_text(window, encoding="utf-8")
 
 checks = {
     "Android surface source selected in CMake": "surface_android.cpp" in cmake,
     "Android native window included": "rex/ui/surface_android.h" in window,
     "Android SDL surface property used": "SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER" in window,
+    "Android surface constructor receives SDL_Window": surface_constructor_ok,
     "Android surface declared and implemented": header_dst.is_file() and source_dst.is_file(),
 }
 for name, ok in checks.items():
