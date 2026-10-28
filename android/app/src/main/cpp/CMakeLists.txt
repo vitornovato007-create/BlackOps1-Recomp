@@ -60,6 +60,9 @@ find_library(android_lib android REQUIRED)
 find_library(dl_lib dl REQUIRED)
 find_library(vulkan_lib vulkan REQUIRED)
 
+# O importador XISO é uma biblioteca JNI independente do runtime SDL/ReXGlue.
+include("${CMAKE_CURRENT_LIST_DIR}/xiso-integration.cmake")
+
 add_subdirectory(
   "${REXGLUE_SOURCE_DIR}"
   "${CMAKE_BINARY_DIR}/rexglue-sdk"
