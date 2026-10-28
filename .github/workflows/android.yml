@@ -132,6 +132,20 @@ jobs:
           set -euo pipefail
           python3 tools/android/preparar_sdk.py
 
+      - name: Auditar imports do jogo contra exports do SDK ReXGlue
+        shell: bash
+        run: |
+          set -uo pipefail
+          python3 tools/auditar_codigo_gerado.py \
+            --check-sdk-imports \
+            --json android-diagnostic/codigo-gerado.json \
+            --markdown android-diagnostic/codigo-gerado.md 2>&1 | tee android-diagnostic/auditoria-imports-sdk.txt
+          audit_status=${PIPESTATUS[0]}
+          if [ "$audit_status" -ne 0 ]; then
+            echo "::error::A auditoria encontrou imports do jogo sem export correspondente no SDK ReXGlue."
+            exit "$audit_status"
+          fi
+
       - name: Instalar Java
         uses: actions/setup-java@v4
         with:
