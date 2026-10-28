@@ -37,6 +37,15 @@ jobs:
             exit "$audit_status"
           fi
 
+          python3 tools/auditar_codigo_gerado.py \
+            --json android-diagnostic/codigo-gerado.json \
+            --markdown android-diagnostic/codigo-gerado.md 2>&1 | tee android-diagnostic/auditoria-codigo-gerado.txt
+          generated_audit_status=${PIPESTATUS[0]}
+          if [ "$generated_audit_status" -ne 0 ]; then
+            echo "::error::A auditoria estrutural do C++ gerado encontrou inconsistencias."
+            exit "$generated_audit_status"
+          fi
+
       - name: Verificar estrutura do projeto
         shell: bash
         run: |
