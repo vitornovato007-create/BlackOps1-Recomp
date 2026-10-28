@@ -195,6 +195,8 @@ def patch_gpu_loader() -> None:
     ]
     for anchor, insertion in additions:
         marker = insertion.strip().splitlines()[-1].strip()
+        if "DynamicLibrary::Load begin" in insertion:
+            marker = 'GpuPluginStageLog("DynamicLibrary::Load begin path=%s", path.string().c_str());'
         if marker in text:
             continue
         if anchor not in text:
