@@ -249,11 +249,58 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -f rexglue-sdk/src/core/filesystem_android.cpp
-          grep -q 'filesystem_android.cpp' rexglue-sdk/src/core/CMakeLists.txt
-          grep -q 'OpenAndroidContentFileDescriptor' rexglue-sdk/src/core/filesystem_android.cpp
-          grep -q 'AndroidInitialize' rexglue-sdk/src/core/filesystem_android.cpp
-          echo "OK: ContentResolver Android presente no SDK preparado."
+
+          RUNTIME_SOURCE="rexglue-sdk/src/core/android_runtime.cpp"
+          CORE_CMAKE="rexglue-sdk/src/core/CMakeLists.txt"
+          JAVA_ACTIVITY="android/app/src/main/java/com/blackops1/recomp/GameActivity.java"
+          LEGACY_SOURCE="rexglue-sdk/src/core/filesystem_android.cpp"
+
+          test -f "$RUNTIME_SOURCE" || {
+            echo "::error::android_runtime.cpp ausente no SDK ReXGlue preparado."
+            exit 1
+          }
+          test -f "$CORE_CMAKE" || {
+            echo "::error::CMakeLists.txt do rexcore ausente."
+            exit 1
+          }
+          test -f "$JAVA_ACTIVITY" || {
+            echo "::error::GameActivity.java ausente; a ponte ContentResolver nao pode ser verificada."
+            exit 1
+          }
+
+          # A versao Android do ReXGlue ja implementa esses simbolos em
+          # android_runtime.cpp. Validar essa implementacao evita reintroduzir
+          # filesystem_android.cpp, que causou definicoes duplicadas no link.
+          for symbol in \
+            'AndroidInitialize()' \
+            'AndroidShutdown()' \
+            'IsAndroidContentUri(' \
+            'OpenAndroidContentFileDescriptor(' \
+            'OpenContentUriFdJavaBridge'; do
+            if ! grep -Fq "$symbol" "$RUNTIME_SOURCE"; then
+              echo "::error::Simbolo/ponte ContentResolver ausente em $RUNTIME_SOURCE: $symbol"
+              exit 1
+            fi
+          done
+
+          grep -Eq 'static[[:space:]]+ParcelFileDescriptor[[:space:]]+openContentFd[[:space:]]*\(' "$JAVA_ACTIVITY" || {
+            echo "::error::GameActivity.java nao declara o metodo estatico openContentFd esperado pela ponte JNI."
+            exit 1
+          }
+
+          if grep -q 'filesystem_android\.cpp' "$CORE_CMAKE"; then
+            echo "::error::CMakeLists.txt ainda registra filesystem_android.cpp, podendo duplicar simbolos de android_runtime.cpp."
+            exit 1
+          fi
+
+          if [ -e "$LEGACY_SOURCE" ]; then
+            echo "::error::A implementacao gerada duplicada filesystem_android.cpp ainda existe no SDK preparado."
+            exit 1
+          fi
+
+          echo "OK: ContentResolver fornecido por android_runtime.cpp."
+          echo "OK: GameActivity.openContentFd presente."
+          echo "OK: implementacao C++ duplicada ausente do alvo rexcore."
 
       - name: Verificar entrada SDL3 e contexto Android do runtime
         shell: bash
