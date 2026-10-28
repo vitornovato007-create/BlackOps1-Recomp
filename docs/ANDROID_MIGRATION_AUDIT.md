@@ -50,3 +50,11 @@ A auditoria estática não comprova a semântica das instruções recompiladas, 
 - O arquivo XEX não deve ser adicionado a commits públicos junto com assets ou artefatos privados sem autorização e revisão de licenças.
 
 A branch de trabalho anterior é preservada; `BlackOps1-XenonRecomp` não faz parte desta migração.
+
+## Estado da refatoração desta branch
+
+- `tools/android/preparar_sdk.py` agora coordena a preparação do SDK em uma única sequência.
+- As alterações de compatibilidade antes embutidas no `android.yml` foram movidas para scripts versionados em `tools/android/steps/`.
+- A preparação registra o commit do SDK e hashes SHA-256 dos patches locais relevantes.
+- O workflow host audita o C++ depois do codegen; o workflow Android audita os fontes versionados antes da compilação.
+- Essa refatoração ainda aguarda execução do workflow pelo usuário e teste real no dispositivo.
