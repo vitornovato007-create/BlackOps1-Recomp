@@ -10,6 +10,7 @@ Uso:
 """
 from __future__ import annotations
 
+import hashlib
 import subprocess
 import sys
 from pathlib import Path
@@ -64,6 +65,22 @@ def main() -> int:
     print("Base: checkout fixado do ReXGlue v0.10.0 + patch Android fixado.")
     print("As alterações específicas do projeto estão versionadas em tools/android/steps.")
     print("=" * 72)
+
+    revision = subprocess.run(
+        ["git", "-C", str(SDK), "rev-parse", "HEAD"],
+        cwd=ROOT, text=True, capture_output=True, check=False,
+    )
+    print("ReXGlue commit: " + (revision.stdout.strip() if revision.returncode == 0 else "indisponível"))
+
+    provenance = [
+        SDK / ".blackops1-android-patch/rexglue-sdk-v0.10.0-android.patch",
+        ROOT / "patches/android/timer_queue.cpp",
+        ROOT / "patches/android/filesystem_android.cpp",
+    ]
+    for path in provenance:
+        if path.is_file():
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            print(f"SHA-256 {path.relative_to(ROOT) if path.is_relative_to(ROOT) else path.name}: {digest}")
 
     for label, command in STEPS:
         print(f"\n>>> {label}", flush=True)
