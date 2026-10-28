@@ -38,7 +38,7 @@ if missing:
     )
 
 java = java_path.read_text(encoding="utf-8")
-if not re.search(r"static\\s+ParcelFileDescriptor\\s+openContentFd\\s*\\(", java):
+if not re.search(r"static\s+ParcelFileDescriptor\s+openContentFd\s*\(", java):
     raise SystemExit(
         "ERRO: GameActivity.java nao declara o metodo estatico openContentFd "
         "esperado pela ponte Android."
@@ -50,11 +50,11 @@ cmake = cmake_path.read_text(encoding="utf-8")
 # O bloco incluia filesystem_android.cpp (duplicava os simbolos) e a ligacao
 # SDL3 que so era necessaria para essa implementacao alternativa.
 cmake, removed = re.subn(
-    r"(?m)^# Android ContentResolver bridge for content:// file descriptors\\.\\n"
-    r"if\\(ANDROID\\)\\n"
-    r"(?:    target_sources\\(rexcore PRIVATE filesystem_android\\.cpp\\)\\n)?"
-    r"(?:    target_link_libraries\\(rexcore PRIVATE SDL3::SDL3\\)\\n)?"
-    r"endif\\(\\)\\n?",
+    r"(?m)^# Android ContentResolver bridge for content:// file descriptors\.\n"
+    r"if\(ANDROID\)\n"
+    r"(?:    target_sources\(rexcore PRIVATE filesystem_android\.cpp\)\n)?"
+    r"(?:    target_link_libraries\(rexcore PRIVATE SDL3::SDL3\)\n)?"
+    r"endif\(\)\n?",
     "",
     cmake,
 )
@@ -85,3 +85,4 @@ fi
 
 grep -n -E 'AndroidInitialize|IsAndroidContentUri|OpenAndroidContentFileDescriptor|OpenContentUriFdJavaBridge' "$RUNTIME_SOURCE"
 grep -n -A2 -B2 'openContentFd' "$JAVA_ACTIVITY"
+PYTHON
