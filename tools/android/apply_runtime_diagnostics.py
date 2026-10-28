@@ -192,7 +192,7 @@ def patch_gpu_loader() -> None:
          '  GpuPluginStageLog("SUCCESS plugin loaded; filename=%s", path.filename().string().c_str());\n  LoadedPlugins().push_back(std::move(library));'),
     ]
     for anchor, insertion in additions:
-        marker = insertion.strip().splitlines()[0].strip()
+        marker = insertion.strip().splitlines()[-1].strip()
         if marker in text:
             continue
         if anchor not in text:
