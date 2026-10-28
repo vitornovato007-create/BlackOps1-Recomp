@@ -118,94 +118,11 @@ jobs:
           git -C rexglue-sdk log -1 --oneline
           git -C rexglue-sdk submodule status --recursive
 
-      - name: Aplicar suporte Android do SDK ReXGlue
+      - name: Preparar SDK ReXGlue Android ARM64
         shell: bash
         run: |
           set -euo pipefail
-          python3 tools/android/apply_android_sdk_patch.py
-          test -f rexglue-sdk/include/rex/main_android.h
-          test -f rexglue-sdk/src/core/android_runtime.cpp
-          grep -q 'android_runtime.cpp' rexglue-sdk/src/core/CMakeLists.txt
-          grep -q 'SetAndroidApplicationContext' rexglue-sdk/include/rex/main_android.h
-          echo "OK: API de contexto JNI e runtime Android do ReXGlue preparados."
-
-      - name: Corrigir e verificar diretorio de logs Android no ReXGlue
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 tools/android/apply_logging_patch.py
-          grep -n -A16 -B2 'ANDROID_SAFE_LOG_DIR_PATCH' rexglue-sdk/src/ui/rex_app.cpp
-          if grep -Fq 'log_config.log_dir = (exe_dir / "logs").string();' rexglue-sdk/src/ui/rex_app.cpp; then
-            echo "::error::O caminho antigo /system/bin/logs continua no ReXGlue."
-            exit 1
-          fi
-
-      - name: Aplicar backend de fibers Android ARM64
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 tools/android/apply_fiber_backend.py
-
-      - name: Aplicar backend de janela e surface Android
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 tools/android/apply_ui_backend.py
-
-      - name: Aplicar e verificar timer_queue.cpp compativel com Android
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          SOURCE="patches/android/timer_queue.cpp"
-          TARGET="rexglue-sdk/src/core/timer_queue.cpp"
-
-          if [ ! -f "$SOURCE" ]; then
-            echo "::error file=$SOURCE::Patch persistente do TimerQueue nao encontrado."
-            exit 1
-          fi
-          if [ ! -f "$TARGET" ]; then
-            echo "::error file=$TARGET::TimerQueue do checkout ReXGlue nao encontrado."
-            exit 1
-          fi
-
-          cp "$SOURCE" "$TARGET"
-
-          if grep -n -E 'std::jthread|std::stop_token|request_stop\\(' "$TARGET"; then
-            echo "::error file=$TARGET::O TimerQueue ainda contem APIs jthread/stop_token incompatíveis com o compilador Android usado."
-            exit 1
-          fi
-
-          grep -q 'std::thread dispatch_thread_' "$TARGET"
-          grep -q 'std::atomic<bool> stop_requested_' "$TARGET"
-          grep -q 'dispatch_thread_.join()' "$TARGET"
-
-          echo "Patch aplicado e verificado no SDK que sera compilado:"
-          grep -n -E 'std::thread dispatch_thread_|std::atomic<bool> stop_requested_|dispatch_thread_.join' "$TARGET"
-
-      - name: Aplicar compatibilidade C++ do ReXGlue para Android NDK
-        shell: bash
-        run: bash tools/android/steps/compat_cpp.sh
-
-      - name: Corrigir dependencias Linux no ReXGlue para Android
-        shell: bash
-        run: bash tools/android/steps/compat_ui_dependencies.sh
-
-      - name: Remover bibliotecas POSIX indisponiveis no Android
-        shell: bash
-        run: bash tools/android/steps/compat_core_posix.sh
-
-      - name: Corrigir deteccao de plataforma ReXGlue para Android
-        shell: bash
-        run: bash tools/android/steps/compat_platform_detection.sh
-
-      - name: Corrigir APIs Android ausentes no ReXGlue POSIX
-        shell: bash
-        run: bash tools/android/steps/compat_posix_android_apis.sh
-
-      - name: Verificar SDL3
-        shell: bash
-        run: bash tools/android/steps/verify_and_patch_sdl3.sh
+          python3 tools/android/preparar_sdk.py
 
       - name: Instalar Java
         uses: actions/setup-java@v4
@@ -306,9 +223,15 @@ jobs:
             echo "::warning::O script de diagnóstico terminou com código $diagnostic_status; consulte os blocos COMEÇO/FIM ANÁLISE."
           fi
 
-      - name: Integrar filesystem ContentResolver no ReXGlue Android
+      - name: Verificar filesystem ContentResolver no ReXGlue Android
         shell: bash
-        run: bash tools/android/steps/integrate_content_resolver.sh
+        run: |
+          set -euo pipefail
+          test -f rexglue-sdk/src/core/filesystem_android.cpp
+          grep -q 'filesystem_android.cpp' rexglue-sdk/src/core/CMakeLists.txt
+          grep -q 'OpenAndroidContentFileDescriptor' rexglue-sdk/src/core/filesystem_android.cpp
+          grep -q 'AndroidInitialize' rexglue-sdk/src/core/filesystem_android.cpp
+          echo "OK: ContentResolver Android presente no SDK preparado."
 
       - name: Verificar entrada SDL3 e contexto Android do runtime
         shell: bash
