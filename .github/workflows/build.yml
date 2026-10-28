@@ -24,6 +24,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Validar sintaxe dos scripts de auditoria
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/auditar_codigo_gerado.py tools/diagnostico_completo.py scripts/auditar_gerados.py
+          git diff --check
+          echo "Sintaxe Python e whitespace validados."
+
       # Diagnostico inicial: registra inconsistencias antes de baixar/compilar o SDK.
       - name: Diagnostico estatico do repositorio
         shell: bash
@@ -42,6 +50,7 @@ jobs:
             echo "::error::A auditoria dos arquivos gerados falhou."
             exit "$audit_status"
           fi
+
     
       # 2. Confere os arquivos necessários.
       - name: Verificar arquivos
@@ -253,6 +262,16 @@ jobs:
           find generated -maxdepth 1 -type f \
             -name '*.cpp' -print | wc -l
     
+      - name: Auditar codigo C++ apos o codegen
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build-diagnostic
+          python3 tools/auditar_codigo_gerado.py \
+            --json build-diagnostic/codigo-gerado-pos-codegen.json \
+            --markdown build-diagnostic/codigo-gerado-pos-codegen.md \
+            2>&1 | tee build-diagnostic/auditoria-codigo-gerado-pos-codegen.txt
+
       # 10. Configura o projeto principal.
       - name: Configure CMake do BlackOps1
         shell: bash

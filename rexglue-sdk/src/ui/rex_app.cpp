@@ -86,7 +86,7 @@ void ReXAppStageLog(const char* format, ...) {
       std::ofstream output(log_dir / "blackops1-diagnostics.txt",
                            std::ios::out | std::ios::app);
       if (output) {
-        output << "[REX-STAGE] " << message << '\\n';
+        output << "[REX-STAGE] " << message << '\n';
         output.flush();
       }
     }
