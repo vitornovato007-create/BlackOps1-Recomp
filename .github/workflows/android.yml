@@ -733,69 +733,16 @@ jobs:
 
           echo "Arquivos XISO encontrados."
 
-      - name: Inspecionar codigo gerado
+      - name: Exibir relatorio da auditoria do codigo gerado
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
-
-          mkdir -p android-diagnostic
-
-          python - <<'PYTHON'
-          from pathlib import Path
-
-          root = Path("generated")
-          report = Path("android-diagnostic/generated-inspection.txt")
-          lines = [
-              "INSPECAO DO CODIGO GERADO",
-              "=" * 60,
-              "",
-          ]
-
-          if not root.is_dir():
-              lines.append("AVISO: pasta generated/ nao encontrada.")
-          else:
-              extensions = {".cpp", ".cc", ".c", ".h", ".hpp", ".cmake"}
-              files = sorted(
-                  p for p in root.rglob("*")
-                  if p.is_file() and p.suffix in extensions
-              )
-
-              lines.append(f"Arquivos C/C++/CMake encontrados: {len(files)}")
-              lines.append("")
-
-              for name in (
-                  "blackops1_init.cpp",
-                  "blackops1_register.cpp",
-                  "sources.cmake",
-                  "rexglue.cmake",
-                  "blackops1_pch.h",
-                  "blackops1_funcs.h",
-              ):
-                  path = root / name
-                  status = "PRESENTE" if path.is_file() else "AUSENTE"
-                  lines.append(f"{name}: {status}")
-
-              lines.append("")
-              lines.append("ARQUIVOS RECOMPILADOS:")
-
-              recomp = sorted(root.glob("blackops1_recomp.*.cpp"))
-              lines.append(f"Quantidade: {len(recomp)}")
-
-              for path in recomp:
-                  lines.append(f"  {path.as_posix()}")
-
-              lines.append("")
-              lines.append(
-                  "A inspecao estatica nao comprova compatibilidade "
-                  "do runtime com Android ARM64."
-              )
-
-          report.write_text(
-              "\n".join(lines) + "\n",
-              encoding="utf-8"
-          )
-          print(report.read_text(encoding="utf-8"))
-          PYTHON
+          if [ -f android-diagnostic/codigo-gerado.md ]; then
+            cat android-diagnostic/codigo-gerado.md
+          else
+            echo "Relatorio de auditoria nao foi produzido; consulte a etapa inicial."
+          fi
 
       - name: Diagnosticos segmentados antes da compilacao
         shell: bash
