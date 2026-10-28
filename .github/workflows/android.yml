@@ -1,10 +1,8 @@
 name: Android ARM64 Build
 
 on:
+  # Execucao manual para evitar disparar builds automaticamente durante a restauracao.
   workflow_dispatch:
-  push:
-    branches:
-      - fix/diagnostico-e-integracao-android
 
 permissions:
   contents: read
