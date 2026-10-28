@@ -167,7 +167,7 @@ def patch_gpu_loader() -> None:
         text = ensure_includes(text, [
             "#include <cstdarg>", "#include <cstdio>", "#include <fstream>",
             "#include <mutex>", "#include <system_error>",
-            "#if defined(__ANDROID__)\n#include <SDL3/SDL.h>\n#include <SDL3/SDL_system.h>\n#endif",
+            "#if defined(__ANDROID__)\n#include <SDL3/SDL.h>\n#include <SDL3/SDL_system.h>\n#include <dlfcn.h>\n#endif",
             "#include <filesystem>",
         ])
         text = replace_once(text, "}  // namespace\n\nstd::unique_ptr<IGraphicsSystem> LoadGpuPlugin",
@@ -181,7 +181,7 @@ def patch_gpu_loader() -> None:
         ("  platform::DynamicLibrary library;",
          '  GpuPluginStageLog("plugin file exists=true; attempting dlopen/Load");\n  platform::DynamicLibrary library;'),
         ("  if (!library.Load(path, platform::SymbolResolution::kImmediate)) {",
-         '  GpuPluginStageLog("DynamicLibrary::Load begin path=%s", path.string().c_str());\n  if (!library.Load(path, platform::SymbolResolution::kImmediate)) {\n    GpuPluginStageLog("FAIL DynamicLibrary::Load; inspect linker dependencies/undefined symbols in logcat");'),
+         '  GpuPluginStageLog("DynamicLibrary::Load begin path=%s", path.string().c_str());\n  if (!library.Load(path, platform::SymbolResolution::kImmediate)) {\n    #if defined(__ANDROID__)\n    const char* load_error = dlerror();\n    GpuPluginStageLog("FAIL DynamicLibrary::Load path=%s dlerror=%s", path.string().c_str(), load_error ? load_error : "(dlerror indisponivel)");\n#else\n    GpuPluginStageLog("FAIL DynamicLibrary::Load path=%s", path.string().c_str());\n#endif'),
         ("  if (!abi_version_fn || !create_fn) {",
          '  GpuPluginStageLog("exports abi_version=%s create=%s", abi_version_fn ? "found" : "missing", create_fn ? "found" : "missing");\n  if (!abi_version_fn || !create_fn) {\n    GpuPluginStageLog("FAIL required GPU plugin ABI exports missing");'),
         ("  uint32_t plugin_abi = abi_version_fn();",
