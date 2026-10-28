@@ -42,6 +42,15 @@ jobs:
             echo "::error::A auditoria dos arquivos gerados falhou."
             exit "$audit_status"
           fi
+
+          python3 tools/auditar_codigo_gerado.py \
+            --json build-diagnostic/codigo-gerado.json \
+            --markdown build-diagnostic/codigo-gerado.md 2>&1 | tee build-diagnostic/auditoria-codigo-gerado.txt
+          generated_audit_status=${PIPESTATUS[0]}
+          if [ "$generated_audit_status" -ne 0 ]; then
+            echo "::error::A auditoria estrutural do C++ gerado encontrou inconsistencias."
+            exit "$generated_audit_status"
+          fi
     
       # 2. Confere os arquivos necessários.
       - name: Verificar arquivos
