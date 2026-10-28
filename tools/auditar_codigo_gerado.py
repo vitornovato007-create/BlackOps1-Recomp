@@ -38,7 +38,12 @@ def numbered_files(directory: Path, pattern: str) -> dict[int, Path]:
     if not directory.exists():
         return found
     for path in directory.glob(pattern):
-        match = re.fullmatch(r"blackops1_recomp\.(\d+)\.(?:cpp|h)", path.name)
+        expression = (
+            r"blackops1_recomp\.(\d+)\.cpp"
+            if pattern.endswith(".cpp")
+            else r"blackops1_funcs\.(\d+)\.h"
+        )
+        match = re.fullmatch(expression, path.name)
         if match:
             found[int(match.group(1))] = path
     return found
