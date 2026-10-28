@@ -69,6 +69,11 @@ def main() -> int:
                         help="grava relatorio JSON")
     parser.add_argument("--markdown", dest="markdown_path", type=Path,
                         help="grava relatorio Markdown")
+    parser.add_argument(
+        "--check-sdk-imports",
+        action="store_true",
+        help="confere se os imports __imp__ do jogo possuem export no SDK ReXGlue preparado",
+    )
     args = parser.parse_args()
 
     cpp = unique_paths(
@@ -184,25 +189,95 @@ def main() -> int:
 
     function_definitions: set[str] = set()
     for path in cpp:
-        text = read(path)
-        function_definitions.update(re.findall(r"DEFINE_REX_FUNC\s*\(\s*([A-Za-z_]\w*)\s*\)", text))
+        source_text = read(path)
+        function_definitions.update(
+            re.findall(r"DEFINE_REX_FUNC\s*\(\s*([A-Za-z_]\w*)\s*\)", source_text)
+        )
+
     registered_functions = {name for _, name in register_rows}
     mapped_functions = {name for _, name in mapping_rows}
-    if function_definitions and registered_functions - function_definitions:
-        missing = sorted(registered_functions - function_definitions)
+
+    # Os símbolos __imp__ são imports do kernel/XAM implementados pelo runtime
+    # ReXGlue, não corpos gerados com DEFINE_REX_FUNC nos fontes do jogo.
+    imported_functions = {
+        name for name in (registered_functions | mapped_functions)
+        if name.startswith("__imp__")
+    }
+    registered_guest_functions = registered_functions - imported_functions
+    mapped_guest_functions = mapped_functions - imported_functions
+
+    funcs_header_text = read(GEN / "headers" / "blackops1_funcs.h")
+    declared_functions = set(re.findall(
+        r"DECLARE_REX_FUNC\s*\(\s*([A-Za-z_]\w*)\s*\)",
+        funcs_header_text,
+    ))
+    missing_import_declarations = sorted(imported_functions - declared_functions)
+    if missing_import_declarations:
+        issue(
+            "ERROR",
+            "IMPORTED_FUNCTION_WITHOUT_DECLARATION",
+            "Imports __imp__ ausentes de blackops1_funcs.h: " +
+            ", ".join(missing_import_declarations[:30]),
+        )
+
+    # Comparar também os pares endereço/símbolo, não apenas os endereços.
+    if set(register_rows) != set(mapping_rows):
+        issue(
+            "ERROR",
+            "REGISTRATION_MAPPING_SYMBOL_MISMATCH",
+            "Os pares endereço/símbolo diferem entre blackops1_register.cpp e blackops1_init.cpp.",
+        )
+
+    if function_definitions and registered_guest_functions - function_definitions:
+        missing = sorted(registered_guest_functions - function_definitions)
         issue("ERROR", "REGISTERED_FUNCTION_WITHOUT_DEFINITION",
-              "Funções registradas sem DEFINE_REX_FUNC encontrado: " +
+              "Funções de jogo registradas sem DEFINE_REX_FUNC encontrado: " +
               ", ".join(missing[:30]))
-    if function_definitions and mapped_functions - function_definitions:
-        missing = sorted(mapped_functions - function_definitions)
+    if function_definitions and mapped_guest_functions - function_definitions:
+        missing = sorted(mapped_guest_functions - function_definitions)
         issue("ERROR", "MAPPED_FUNCTION_WITHOUT_DEFINITION",
-              "Funções no mapa sem DEFINE_REX_FUNC encontrado: " +
+              "Funções de jogo no mapa sem DEFINE_REX_FUNC encontrado: " +
               ", ".join(missing[:30]))
-    if function_definitions and function_definitions - registered_functions:
-        extra = sorted(function_definitions - registered_functions)
-        issue("WARNING", "UNREGISTERED_GENERATED_FUNCTION",
-              "Funções definidas não encontradas no registro: " +
-              ", ".join(extra[:30]))
+    if function_definitions and function_definitions - registered_guest_functions:
+        extra = sorted(function_definitions - registered_guest_functions - imported_functions)
+        if extra:
+            issue("WARNING", "UNREGISTERED_GENERATED_FUNCTION",
+                  "Funções definidas não encontradas no registro: " +
+                  ", ".join(sorted(extra)[:30]))
+
+    if args.check_sdk_imports:
+        sdk_source_root = ROOT / "rexglue-sdk" / "src"
+        if not sdk_source_root.is_dir():
+            issue(
+                "ERROR",
+                "SDK_IMPORT_AUDIT_UNAVAILABLE",
+                "Foi solicitado --check-sdk-imports, mas rexglue-sdk/src não existe. "
+                "Execute esta verificação depois de preparar o SDK ReXGlue.",
+            )
+        else:
+            sdk_text_parts = []
+            for sdk_path in sdk_source_root.rglob("*"):
+                if sdk_path.is_file() and sdk_path.suffix in {".cpp", ".h", ".hpp", ".inc"}:
+                    sdk_text_parts.append(read(sdk_path))
+            sdk_text = "\n".join(sdk_text_parts)
+            sdk_export_names = set(re.findall(
+                r"(?:REX_EXPORT(?:_STUB(?:_RETURN)?)?|REX_HOOK_RAW|REX_HOOK|REX_STUB(?:_RETURN|_LOG)?)"
+                r"\s*\(\s*(__imp__\w+)",
+                sdk_text,
+            ))
+            missing_sdk_imports = sorted(imported_functions - sdk_export_names)
+            if missing_sdk_imports:
+                issue(
+                    "ERROR",
+                    "SDK_IMPORT_IMPLEMENTATION_MISSING",
+                    "Imports do jogo sem export/hook/stub encontrado no SDK ReXGlue: " +
+                    ", ".join(missing_sdk_imports[:40]),
+                )
+            else:
+                print(
+                    f"[OK] {len(imported_functions)} imports __imp__ encontrados "
+                    "nos exports/hook/stubs do SDK ReXGlue."
+                )
 
     # Verifica includes locais sem tratar includes de sistema como erros.
     missing_includes: list[str] = []
