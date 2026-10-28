@@ -405,8 +405,11 @@ jobs:
 
           # OnInitialize carrega o plugin pelo nome que o SDK deriva da
           # configuracao CMake. assembleDebug precisa levar o postfix 'd'.
+          # Use nomes de entrada literais: os '+' de libc++_shared.so
+          # sao metacaracteres em regex ERE e causavam falso negativo.
+          APK_ENTRIES="$(unzip -Z1 "$APK")"
           for library in librexruntimed.so librexgpu-xenosd.so libc++_shared.so; do
-            if ! unzip -l "$APK" | grep -qE "lib/arm64-v8a/${library}$"; then
+            if ! grep -Fxq "lib/arm64-v8a/${library}" <<< "$APK_ENTRIES"; then
               echo "::error::Biblioteca obrigatoria ausente do APK ARM64: ${library}"
               exit 1
             fi
