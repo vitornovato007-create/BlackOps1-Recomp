@@ -143,20 +143,20 @@ def patch_app() -> None:
     # Explicit false-path diagnostics, including paths before GPU setup.
     false_paths = [
         (
-            "  if (!SetupEnvironment())\\n    return false;",
-            '  if (!SetupEnvironment()) {\\n    ReXAppStageLog("FAIL OnInitialize: SetupEnvironment returned false");\\n    return false;\\n  }',
+            "  if (!SetupEnvironment())\n    return false;",
+            '  if (!SetupEnvironment()) {\n    ReXAppStageLog("FAIL OnInitialize: SetupEnvironment returned false");\n    return false;\n  }',
         ),
         (
-            "  if (!SetupPresentation())\\n    return false;",
-            '  if (!SetupPresentation()) {\\n    ReXAppStageLog("FAIL OnInitialize: SetupPresentation returned false");\\n    return false;\\n  }',
+            "  if (!SetupPresentation())\n    return false;",
+            '  if (!SetupPresentation()) {\n    ReXAppStageLog("FAIL OnInitialize: SetupPresentation returned false");\n    return false;\n  }',
         ),
         (
-            "  if (!ConstructRuntime(*paths))\\n    return false;",
-            '  if (!ConstructRuntime(*paths)) {\\n    ReXAppStageLog("FAIL OnInitialize: ConstructRuntime returned false");\\n    return false;\\n  }',
+            "  if (!ConstructRuntime(*paths))\n    return false;",
+            '  if (!ConstructRuntime(*paths)) {\n    ReXAppStageLog("FAIL OnInitialize: ConstructRuntime returned false");\n    return false;\n  }',
         ),
         (
             "  if (!std::filesystem::is_directory(paths.game_data_root)) {",
-            '  if (!std::filesystem::is_directory(paths.game_data_root)) {\\n    ReXAppStageLog("FAIL ConstructRuntime: game_data_root is not a directory: %s", paths.game_data_root.string().c_str());',
+            '  if (!std::filesystem::is_directory(paths.game_data_root)) {\n    ReXAppStageLog("FAIL ConstructRuntime: game_data_root is not a directory: %s", paths.game_data_root.string().c_str());',
         ),
     ]
     for anchor, replacement in false_paths:
