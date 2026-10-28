@@ -134,7 +134,7 @@ def patch_app() -> None:
         ('  status = runtime_->LoadXexImage(xex_image);', '  ReXAppStageLog("ConstructRuntime: calling LoadXexImage path=%s", xex_image.c_str());\n  status = runtime_->LoadXexImage(xex_image);\n  ReXAppStageLog("ConstructRuntime: LoadXexImage status=0x%08X", static_cast<unsigned int>(status));'),
     ]
     for anchor, insertion in additions:
-        marker = insertion.strip().splitlines()[0].strip()
+        marker = insertion.strip().splitlines()[-1].strip()
         if marker in text:
             continue
         if anchor not in text:
@@ -199,21 +199,24 @@ def patch_gpu_loader() -> None:
             fail(f"GPU loader: ponto de instrumentacao ausente: {anchor.strip()}")
         text = replace_once(text, anchor, insertion, f"instrumentacao GPU {anchor.strip()}")
     # Missing-file and ABI-mismatch paths need their own explicit final markers.
-    text = text.replace(
-        '  if (!std::filesystem::exists(path)) {\n',
-        '  if (!std::filesystem::exists(path)) {\n    GpuPluginStageLog("FAIL plugin file does not exist: %s", path.string().c_str());\n',
-        1,
-    )
-    text = text.replace(
-        '  if (plugin_abi != kGpuPluginAbiVersion) {\n',
-        '  if (plugin_abi != kGpuPluginAbiVersion) {\n    GpuPluginStageLog("FAIL ABI mismatch plugin=%u expected=%u", plugin_abi, kGpuPluginAbiVersion);\n',
-        1,
-    )
-    text = text.replace(
-        '  if (!graphics_system) {\n',
-        '  if (!graphics_system) {\n    GpuPluginStageLog("FAIL factory returned null backend=%s", backend_str.c_str());\n',
-        1,
-    )
+    if 'GpuPluginStageLog("FAIL plugin file does not exist:' not in text:
+        text = text.replace(
+            '  if (!std::filesystem::exists(path)) {\n',
+            '  if (!std::filesystem::exists(path)) {\n    GpuPluginStageLog("FAIL plugin file does not exist: %s", path.string().c_str());\n',
+            1,
+        )
+    if 'GpuPluginStageLog("FAIL ABI mismatch' not in text:
+        text = text.replace(
+            '  if (plugin_abi != kGpuPluginAbiVersion) {\n',
+            '  if (plugin_abi != kGpuPluginAbiVersion) {\n    GpuPluginStageLog("FAIL ABI mismatch plugin=%u expected=%u", plugin_abi, kGpuPluginAbiVersion);\n',
+            1,
+        )
+    if 'GpuPluginStageLog("FAIL factory returned null' not in text:
+        text = text.replace(
+            '  if (!graphics_system) {\n',
+            '  if (!graphics_system) {\n    GpuPluginStageLog("FAIL factory returned null backend=%s", backend_str.c_str());\n',
+            1,
+        )
     GPU_LOADER.write_text(text, encoding="utf-8")
     for marker in ("resolved path=", "exports abi_version=", "ABI plugin=", "factory returned"):
         if marker not in text:
