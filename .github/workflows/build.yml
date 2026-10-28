@@ -262,6 +262,16 @@ jobs:
           find generated -maxdepth 1 -type f \
             -name '*.cpp' -print | wc -l
     
+      - name: Auditar codigo C++ apos o codegen
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build-diagnostic
+          python3 tools/auditar_codigo_gerado.py \
+            --json build-diagnostic/codigo-gerado-pos-codegen.json \
+            --markdown build-diagnostic/codigo-gerado-pos-codegen.md \
+            2>&1 | tee build-diagnostic/auditoria-codigo-gerado-pos-codegen.txt
+
       # 10. Configura o projeto principal.
       - name: Configure CMake do BlackOps1
         shell: bash
