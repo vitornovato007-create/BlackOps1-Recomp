@@ -1,73 +1,83 @@
 #!/usr/bin/env python3
-"""Preflight + minimal Android CMake adaptation for the bundled ReXGlue SDK.
+"""Orquestra a preparacao reproduzivel do SDK ReXGlue para Android ARM64.
 
-This script deliberately validates every anchor before writing any file. It does
-not claim to provide the missing SDL Android native-window/Vulkan host.
+A rotina aplica os patches versionados em tools/android/steps e os scripts
+existentes. Cada etapa continua separada, pode ser auditada isoladamente e
+precisa validar o resultado antes de seguir.
+
+Uso:
+  python3 tools/android/preparar_sdk.py
 """
-from pathlib import Path
+from __future__ import annotations
+
+import subprocess
 import sys
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SDK = ROOT / "rexglue-sdk"
 
-PATCHES = [
-    (
-        Path("CMakeLists.txt"),
-        '''if(WIN32)\n    if(REX_TARGET_PROCESSOR MATCHES "AMD64|x86_64")''',
-        '''if(ANDROID)\n    if(NOT REX_TARGET_PROCESSOR MATCHES "aarch64|ARM64|arm64")\n        message(FATAL_ERROR "Android ReXGlue target must be ARM64; got: ${REX_TARGET_PROCESSOR}")\n    endif()\n    set(REX_PLATFORM "android-arm64")\n    add_compile_definitions(REX_PLATFORM_ANDROID=1)\nelseif(WIN32)\n    if(REX_TARGET_PROCESSOR MATCHES "AMD64|x86_64")''',
-        "Add Android ARM64 platform detection",
-    ),
-    (
-        Path("src/core/CMakeLists.txt"),
-        '''if(APPLE)\n    target_link_libraries(rexcore PRIVATE pthread)\nelseif(UNIX)\n    target_link_libraries(rexcore PRIVATE pthread rt dl)\nendif()''',
-        '''if(ANDROID)\n    target_link_libraries(rexcore PRIVATE dl)\nelseif(APPLE)\n    target_link_libraries(rexcore PRIVATE pthread)\nelseif(UNIX)\n    target_link_libraries(rexcore PRIVATE pthread rt dl)\nendif()''',
-        "Avoid linking librt on Android/Bionic",
-    ),
-    (
-        Path("src/ui/CMakeLists.txt"),
-        '''if(UNIX AND NOT APPLE)\n    find_package(PkgConfig REQUIRED)''',
-        '''if(ANDROID)\n    # Android uses SDL's ANativeWindow and Android Vulkan surface path.\n    # Do not try to locate desktop X11/Wayland packages with PkgConfig.\nelseif(UNIX AND NOT APPLE)\n    find_package(PkgConfig REQUIRED)''',
-        "Skip desktop X11/Wayland dependencies on Android",
-    ),
+STEPS = [
+    ("patch Android fixado do SDK", [sys.executable, "tools/android/apply_android_sdk_patch.py"]),
+    ("diretorio de logs Android", [sys.executable, "tools/android/apply_logging_patch.py"]),
+    ("backend de fibers ARM64", [sys.executable, "tools/android/apply_fiber_backend.py"]),
+    ("backend de janela/surface", [sys.executable, "tools/android/apply_ui_backend.py"]),
+    ("TimerQueue compatível com Android", ["bash", "tools/android/steps/apply_timer_queue.sh"]),
+    ("compatibilidade C++/NDK", ["bash", "tools/android/steps/compat_cpp.sh"]),
+    ("dependências UI sem X11/Wayland", ["bash", "tools/android/steps/compat_ui_dependencies.sh"]),
+    ("dependências POSIX/Bionic", ["bash", "tools/android/steps/compat_core_posix.sh"]),
+    ("detecção de plataforma ARM64", ["bash", "tools/android/steps/compat_platform_detection.sh"]),
+    ("APIs POSIX Android", ["bash", "tools/android/steps/compat_posix_android_apis.sh"]),
+    ("SDL3 compartilhado", ["bash", "tools/android/steps/verify_and_patch_sdl3.sh"]),
+    ("filesystem ContentResolver", ["bash", "tools/android/steps/integrate_content_resolver.sh"]),
 ]
 
 
 def main() -> int:
-    if not SDK.is_dir():
-        print(f"ERRO: SDK não encontrado: {SDK}")
-        return 1
-
-    planned = []
-    errors = []
-    for rel, old, new, label in PATCHES:
-        path = SDK / rel
-        if not path.is_file():
-            errors.append(f"Arquivo ausente: {rel.as_posix()}")
-            continue
-        text = path.read_text(encoding="utf-8")
-        if new in text:
-            print(f"JÁ APLICADO: {label}")
-        elif old in text:
-            planned.append((path, text, old, new, label))
-        else:
-            errors.append(f"Âncora não encontrada: {rel.as_posix()} ({label})")
-
-    # Fail before modifying anything if any anchor is incompatible.
-    if errors:
-        print("PRÉ-VALIDAÇÃO FALHOU; nenhum arquivo foi alterado:")
-        for error in errors:
-            print(f" - {error}")
+    if not (SDK / "CMakeLists.txt").is_file():
+        print(f"ERRO: checkout ReXGlue ausente ou incompleto: {SDK}", file=sys.stderr)
         return 2
 
-    for path, text, old, new, label in planned:
-        path.write_text(text.replace(old, new, 1), encoding="utf-8")
-        print(f"APLICADO: {path.relative_to(ROOT).as_posix()} — {label}")
+    required = [ROOT / relative for relative in (
+        "tools/android/apply_android_sdk_patch.py",
+        "tools/android/apply_logging_patch.py",
+        "tools/android/apply_fiber_backend.py",
+        "tools/android/apply_ui_backend.py",
+        "tools/android/steps/apply_timer_queue.sh",
+        "tools/android/steps/compat_cpp.sh",
+        "tools/android/steps/compat_ui_dependencies.sh",
+        "tools/android/steps/compat_core_posix.sh",
+        "tools/android/steps/compat_platform_detection.sh",
+        "tools/android/steps/compat_posix_android_apis.sh",
+        "tools/android/steps/verify_and_patch_sdl3.sh",
+        "tools/android/steps/integrate_content_resolver.sh",
+    )]
+    missing = [path.relative_to(ROOT).as_posix() for path in required if not path.is_file()]
+    if missing:
+        print("ERRO: faltam scripts de preparação:", file=sys.stderr)
+        for path in missing:
+            print(f" - {path}", file=sys.stderr)
+        return 2
 
-    print("\nPRÉ-PATCH CMake aplicado.")
-    print("ATENÇÃO: isto ainda NÃO é uma integração Android completa.")
-    print("Falta adicionar a superfície ANativeWindow ao WindowSDL, criar a")
-    print("VkSurfaceKHR Android, integrar ciclo de vida/entrada/áudio e ligar")
-    print("o runtime real e os fontes gerados ao target nativo do APK.")
+    print("=" * 72)
+    print("PREPARAÇÃO DO SDK RE XGLUE — ANDROID ARM64")
+    print("Base: checkout fixado do ReXGlue v0.10.0 + patch Android fixado.")
+    print("As alterações específicas do projeto estão versionadas em tools/android/steps.")
+    print("=" * 72)
+
+    for label, command in STEPS:
+        print(f"\n>>> {label}", flush=True)
+        result = subprocess.run(command, cwd=ROOT, check=False)
+        if result.returncode:
+            print(
+                f"ERRO: etapa '{label}' falhou com código {result.returncode}; "
+                "as etapas seguintes não foram executadas.",
+                file=sys.stderr,
+            )
+            return result.returncode
+
+    print("\nOK: todas as etapas de preparação do SDK terminaram.")
+    print("Isso não comprova que o APK compila nem que o jogo inicia no dispositivo.")
     return 0
 
 
