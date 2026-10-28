@@ -23,7 +23,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m py_compile tools/auditar_codigo_gerado.py tools/diagnostico_completo.py scripts/auditar_gerados.py tools/android/preparar_sdk.py
+          python3 -m py_compile tools/auditar_codigo_gerado.py tools/diagnostico_completo.py scripts/auditar_gerados.py tools/android/preparar_sdk.py tools/android/apply_android_sdk_patch.py tools/android/apply_logging_patch.py tools/android/apply_fiber_backend.py tools/android/apply_ui_backend.py tools/android/auditar_integracao.py
           for script in tools/android/steps/*.sh; do bash -n "$script"; done
           echo "Sintaxe validada."
 
