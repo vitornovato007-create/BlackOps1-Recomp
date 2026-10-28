@@ -24,6 +24,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Validar sintaxe dos scripts de auditoria
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/auditar_codigo_gerado.py tools/diagnostico_completo.py scripts/auditar_gerados.py
+          git diff --check
+          echo "Sintaxe Python e whitespace validados."
+
       # Diagnostico inicial: registra inconsistencias antes de baixar/compilar o SDK.
       - name: Diagnostico estatico do repositorio
         shell: bash
