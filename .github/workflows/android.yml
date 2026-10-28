@@ -565,24 +565,29 @@ jobs:
           )
           threading.write_text(text, encoding="utf-8")
 
-          header.parent.mkdir(parents=True, exist_ok=True)
-          header.write_text(
-              "#pragma once\n"
-              "#if REX_PLATFORM_ANDROID\n"
-              "#include <android/api-level.h>\n"
-              "namespace rex {\n"
-              "inline int GetAndroidApiLevel() { return android_get_device_api_level(); }\n"
-              "}  // namespace rex\n"
-              "#endif  // REX_PLATFORM_ANDROID\n",
-              encoding="utf-8",
+          # O patch Android fixado ja fornece main_android.h com as declaracoes
+          # de GetAndroidNativeLibraryDir, SetAndroidApplicationContext e
+          # GetAndroidApiLevel. Nao sobrescreva esse header: filesystem_posix.cpp
+          # depende de GetAndroidNativeLibraryDir durante a compilacao.
+          if not header.is_file():
+              raise SystemExit("ERRO: main_android.h do patch Android esta ausente.")
+          header_text = header.read_text(encoding="utf-8")
+          required_android_api = (
+              "GetAndroidNativeLibraryDir",
+              "SetAndroidApplicationContext",
+              "GetAndroidApiLevel",
           )
+          missing_api = [name for name in required_android_api if name not in header_text]
+          if missing_api:
+              raise SystemExit(
+                  "ERRO: main_android.h perdeu declaracoes do patch Android: "
+                  + ", ".join(missing_api)
+              )
 
           if new_assert not in threading.read_text(encoding="utf-8"):
               raise SystemExit("ERRO: threading_posix.cpp nao habilitou a compilacao Android.")
-          if "GetAndroidApiLevel" not in header.read_text(encoding="utf-8"):
-              raise SystemExit("ERRO: cabecalho de compatibilidade Android nao foi criado.")
-          print("APIs Android corrigidas em memory_posix.cpp e threading_posix.cpp.")
-          print(f"Cabecalho temporario criado: {header}")
+          print("APIs Android corrigidas; declaracoes originais do patch preservadas.")
+          print(f"Cabecalho Android validado: {header}")
           PYTHON
 
       - name: Verificar SDL3
