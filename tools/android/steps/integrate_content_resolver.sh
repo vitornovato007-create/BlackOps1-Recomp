@@ -85,4 +85,3 @@ fi
 
 grep -n -E 'AndroidInitialize|IsAndroidContentUri|OpenAndroidContentFileDescriptor|OpenContentUriFdJavaBridge' "$RUNTIME_SOURCE"
 grep -n -A2 -B2 'openContentFd' "$JAVA_ACTIVITY"
-PYTHON
