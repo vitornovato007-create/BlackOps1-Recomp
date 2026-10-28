@@ -97,7 +97,7 @@ jobs:
             echo "Checkout existente incompleto."
             echo "Tentando obter ReXGlue com submodulos..."
             rm -rf rexglue-sdk
-            git clone --recursive "$REXGLUE_URL" rexglue-sdk
+            git clone --branch v0.10.0 --depth 1 --recursive "$REXGLUE_URL" rexglue-sdk
           fi
 
           test -f "rexglue-sdk/CMakeLists.txt"
@@ -108,6 +108,17 @@ jobs:
           echo "ReXGlue preparado."
           git -C rexglue-sdk log -1 --oneline
           git -C rexglue-sdk submodule status --recursive
+
+      - name: Aplicar suporte Android do SDK ReXGlue
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/android/apply_android_sdk_patch.py
+          test -f rexglue-sdk/include/rex/main_android.h
+          test -f rexglue-sdk/src/core/android_runtime.cpp
+          grep -q 'android_runtime.cpp' rexglue-sdk/src/core/CMakeLists.txt
+          grep -q 'SetAndroidApplicationContext' rexglue-sdk/include/rex/main_android.h
+          echo "OK: API de contexto JNI e runtime Android do ReXGlue preparados."
 
       - name: Corrigir e verificar diretorio de logs Android no ReXGlue
         shell: bash
@@ -181,51 +192,59 @@ jobs:
           
           # The upstream SDK is freshly cloned on every workflow run, so apply
           # these compatibility changes here instead of relying on repo edits.
+          # O patch Android fixado do ReXGlue ja altera estes guards para
+          # REX_PLATFORM_ANDROID. Este passo tambem aceita o SDK original,
+          # tornando a verificacao idempotente em ambos os formatos.
           text = numeric.read_text(encoding="utf-8")
-          text, include_count = re.subn(
+          text, _ = re.subn(
               r"(?m)^#if REX_PLATFORM_MAC\s*$",
-              "#if REX_PLATFORM_MAC || REX_PLATFORM_ANDROID || defined(ANDROID) || defined(__ANDROID__)",
+              "#if REX_PLATFORM_MAC || REX_PLATFORM_ANDROID",
               text,
           )
-          if include_count < 3:
+          already_patched_count = text.count(
+              "#if REX_PLATFORM_MAC || REX_PLATFORM_ANDROID"
+          )
+          guard_count = already_patched_count
+          if guard_count < 3:
               raise SystemExit(
-                  "ERRO: numeric.h mudou de formato; esperava ao menos 3 "
-                  "guards de plataforma para float from_chars."
+                  "ERRO: numeric.h nao contem os guards esperados para "
+                  "REX_PLATFORM_ANDROID/float from_chars."
               )
           numeric.write_text(text, encoding="utf-8")
 
           text = chrono.read_text(encoding="utf-8")
           old_guard = "#ifdef __APPLE__"
-          new_guard = "#if defined(__APPLE__) || defined(__ANDROID__) || defined(ANDROID)"
-          if old_guard not in text:
-              if new_guard not in text:
-                  raise SystemExit(
-                      "ERRO: chrono.h nao contem o guard Apple esperado; "
-                      "nao foi aplicado fallback automaticamente."
-                  )
-          else:
+          new_guard = "#if defined(__APPLE__) || (defined(_LIBCPP_VERSION) && _LIBCPP_VERSION < 200000)"
+          if old_guard in text:
               text = text.replace(old_guard, new_guard, 1)
               chrono.write_text(text, encoding="utf-8")
+          elif new_guard not in text:
+              raise SystemExit(
+                  "ERRO: chrono.h nao contem o fallback libc++ esperado "
+                  "para Android NDK."
+              )
 
-          # Verify the patch actually landed in the fresh checkout.
+          # Confirme os simbolos realmente usados pelo patch Android fixado.
           numeric_text = numeric.read_text(encoding="utf-8")
           chrono_text = chrono.read_text(encoding="utf-8")
           if "portable_float_from_chars" not in numeric_text:
               raise SystemExit("ERRO: fallback de float nao encontrado em numeric.h.")
-          if "defined(__ANDROID__)" not in numeric_text:
-              raise SystemExit("ERRO: guard Android ausente em numeric.h.")
-          if "defined(__ANDROID__)" not in chrono_text and "defined(ANDROID)" not in chrono_text:
-              raise SystemExit("ERRO: fallback chrono nao foi habilitado para Android.")
+          if "REX_PLATFORM_ANDROID" not in numeric_text:
+              raise SystemExit("ERRO: guard REX_PLATFORM_ANDROID ausente em numeric.h.")
+          if "_LIBCPP_VERSION < 200000" not in chrono_text:
+              raise SystemExit("ERRO: fallback libc++/chrono nao foi habilitado para Android.")
+          if "clock_time_conversion" not in chrono_text:
+              raise SystemExit("ERRO: declaracao clock_time_conversion ausente em chrono.h.")
 
           print("Compatibilidade Android aplicada e verificada:")
-          print(f"  {numeric}: {include_count} guards ajustados")
-          print(f"  {chrono}: fallback chrono habilitado para Android")
+          print(f"  {numeric}: {guard_count} guards Android reconhecidos")
+          print(f"  {chrono}: fallback libc++/chrono confirmado")
           PYTHON
 
           echo "Confirmando alteracoes aplicadas:"
-          grep -n -E 'portable_float_from_chars|REX_PLATFORM_MAC.*ANDROID|defined\\(__ANDROID__\\)' \
+          grep -n -E 'portable_float_from_chars|REX_PLATFORM_MAC.*REX_PLATFORM_ANDROID' \
             rexglue-sdk/include/rex/string/numeric.h
-          grep -n -E 'defined\\(__ANDROID__\\)|defined\\(ANDROID\\)|clock_time_conversion' \
+          grep -n -E '_LIBCPP_VERSION|clock_time_conversion' \
             rexglue-sdk/include/rex/chrono/chrono.h | head -20
 
       - name: Corrigir dependencias Linux no ReXGlue para Android
@@ -328,33 +347,78 @@ jobs:
           fi
 
           python - "$FILE" <<'PYTHON'
+          import re
           import sys
           from pathlib import Path
 
           path = Path(sys.argv[1])
           content = path.read_text(encoding="utf-8")
-          old = """if(APPLE)
-              target_link_libraries(rexcore PRIVATE pthread)
-          elseif(UNIX)
-              target_link_libraries(rexcore PRIVATE pthread rt dl)
-          endif()"""
-          new = """if(APPLE)
+
+          # O patch Android do SDK pode alterar o ramo UNIX antes deste passo.
+          # Localizamos o bloco de link POSIX pelo alvo rexcore e pelo proximo
+          # bloco de dependencias PUBLIC, em vez de depender de texto identico.
+          next_block = content.find("target_link_libraries(rexcore")
+          candidates = []
+          cursor = 0
+          while True:
+              found = content.find("if(APPLE)", cursor)
+              if found < 0 or (next_block >= 0 and found >= next_block):
+                  break
+              candidates.append(found)
+              cursor = found + 1
+
+          public_marker = re.search(
+              r"(?m)^target_link_libraries\(rexcore\s*\n\s*PUBLIC\s*$",
+              content,
+          )
+          if not public_marker:
+              raise SystemExit(
+                  "ERRO: bloco PUBLIC do rexcore nao encontrado; "
+                  "nao e seguro alterar as dependencias POSIX."
+              )
+
+          start = content.rfind("if(APPLE)", 0, public_marker.start())
+          if start < 0:
+              raise SystemExit("ERRO: bloco de link POSIX do rexcore nao encontrado.")
+
+          existing_region = content[start:public_marker.start()]
+          android_link = re.search(
+              r"(?m)^\s*target_link_libraries\(rexcore\s+PRIVATE\s+dl\s*\)",
+              existing_region,
+          )
+          android_branch = re.search(r"(?m)^\s*elseif\(ANDROID\)\s*$", existing_region)
+
+          if not (android_link and android_branch):
+              normalized = """if(APPLE)
               target_link_libraries(rexcore PRIVATE pthread)
           elseif(ANDROID)
-              # Bionic provides pthread and realtime APIs without separate
-              # -lpthread/-lrt libraries; keep libdl for dlopen/dlsym.
+              # Bionic supplies pthread/realtime APIs; libdl remains explicit.
               target_link_libraries(rexcore PRIVATE dl)
           elseif(UNIX)
               target_link_libraries(rexcore PRIVATE pthread rt dl)
-          endif()"""
-          if new not in content:
-              if old not in content:
-                  raise SystemExit("ERRO: bloco de link POSIX do rexcore nao corresponde ao esperado.")
-              content = content.replace(old, new, 1)
+          endif()
+
+          """
+              content = content[:start] + normalized + content[public_marker.start():]
               path.write_text(content, encoding="utf-8")
-          if "elseif(ANDROID)" not in content or "target_link_libraries(rexcore PRIVATE dl)" not in content:
-              raise SystemExit("ERRO: dependencias Android do rexcore nao foram configuradas.")
-          print("Dependencias de link Android do rexcore corrigidas.")
+
+          final = path.read_text(encoding="utf-8")
+          final_public = re.search(
+              r"(?m)^target_link_libraries\(rexcore\s*\n\s*PUBLIC\s*$",
+              final,
+          )
+          final_start = final.rfind("if(APPLE)", 0, final_public.start()) if final_public else -1
+          final_region = final[final_start:final_public.start()] if final_start >= 0 and final_public else ""
+          if not re.search(r"(?m)^\s*elseif\(ANDROID\)\s*$", final_region):
+              raise SystemExit("ERRO: ramo Android ausente nas dependencias POSIX do rexcore.")
+          if not re.search(
+              r"(?m)^\s*target_link_libraries\(rexcore\s+PRIVATE\s+dl\s*\)",
+              final_region,
+          ):
+              raise SystemExit("ERRO: libdl nao foi configurada para Android no rexcore.")
+          if not re.search(r"(?m)^\s*elseif\(UNIX\)\s*$", final_region):
+              raise SystemExit("ERRO: dependencias POSIX de desktop foram perdidas.")
+          print("Dependencias de link Android/POSIX do rexcore corrigidas e verificadas.")
           PYTHON
 
           grep -n -A10 -B2 'target_link_libraries(rexcore PRIVATE' "$FILE"
@@ -380,7 +444,19 @@ jobs:
           block = content[start:end]
 
           if "elseif(ANDROID)" in block:
-              print("Deteccao Android ja existe; nenhuma alteracao necessaria.")
+              # O patch comunitario pode criar o ramo Android sem definir a
+              # macro usada pelos fontes do SDK. Garanta ambos os requisitos.
+              if "add_compile_definitions(REX_PLATFORM_ANDROID=1)" not in block:
+                  block = block.replace(
+                      "elseif(ANDROID)",
+                      "elseif(ANDROID)\n    add_compile_definitions(REX_PLATFORM_ANDROID=1)",
+                      1,
+                  )
+                  content = content[:start] + block + content[end:]
+                  path.write_text(content, encoding="utf-8")
+                  print("Macro REX_PLATFORM_ANDROID adicionada ao ramo Android existente.")
+              else:
+                  print("Ramo Android e macro ja existem; nenhuma alteracao necessaria.")
           else:
               old = "elseif(UNIX AND NOT APPLE)"
               if old not in block:
@@ -455,46 +531,63 @@ jobs:
           if "#include <rex/main_android.h>" not in text:
               raise SystemExit("ERRO: include esperado rex/main_android.h nao encontrado em threading_posix.cpp.")
 
-          # Bionic does not implement robust pthread mutexes. Keep the ordinary
-          # std::mutex path on Android; robust recovery remains enabled on Linux.
-          robust_guard = "#if REX_PLATFORM_LINUX\n"
-          replacements = [
-              (robust_guard + "    // Use robust mutexes so waits can recover if owner thread terminates.",
-               "#if REX_PLATFORM_LINUX && !defined(__ANDROID__)\n    // Use robust mutexes so waits can recover if owner thread terminates."),
-              (robust_guard + "    auto native_mutex = static_cast<pthread_mutex_t*>(mutex_.native_handle());",
-               "#if REX_PLATFORM_LINUX && !defined(__ANDROID__)\n    auto native_mutex = static_cast<pthread_mutex_t*>(mutex_.native_handle());"),
-              (robust_guard + "        auto native_mutex = static_cast<pthread_mutex_t*>(handles[i]->mutex_.native_handle());",
-               "#if REX_PLATFORM_LINUX && !defined(__ANDROID__)\n        auto native_mutex = static_cast<pthread_mutex_t*>(handles[i]->mutex_.native_handle());"),
-          ]
-          for old, new in replacements:
-              if old in text:
-                  text = text.replace(old, new, 1)
-              elif new not in text:
-                  raise SystemExit("ERRO: bloco de mutex robusto esperado nao encontrado em threading_posix.cpp.")
-          if "PTHREAD_MUTEX_ROBUST" not in text:
-              raise SystemExit("ERRO: patch inesperadamente removeu o codigo robusto Linux.")
-          if text.count("#if REX_PLATFORM_LINUX && !defined(__ANDROID__)") < 3:
-              raise SystemExit("ERRO: os tres caminhos de mutex robusto nao foram protegidos para Android.")
+          # Linux-only extensions and robust-mutex recovery must not be
+          # compiled for Android's Bionic libc. Do not count source blocks:
+          # the pinned community patch may rearrange/nest preprocessor guards.
+          # Normalize every top-level Linux guard in this POSIX file instead.
+          android_safe_guard = "#if REX_PLATFORM_LINUX && !defined(__ANDROID__)"
+          text = re.sub(
+              r"(?m)^#if REX_PLATFORM_LINUX\s*$",
+              android_safe_guard,
+              text,
+          )
+
+          # Idempotent verification: no unguarded exact Linux guard may remain.
+          if re.search(r"(?m)^#if REX_PLATFORM_LINUX\s*$", text):
+              raise SystemExit(
+                  "ERRO: ainda existe um guard Linux que nao exclui Android."
+              )
+          if android_safe_guard not in text:
+              raise SystemExit(
+                  "ERRO: nenhum guard Linux Android-safe foi aplicado em threading_posix.cpp."
+              )
+          if not all(marker in text for marker in (
+              "PTHREAD_MUTEX_ROBUST",
+              "pthread_mutexattr_setrobust",
+              "EOWNERDEAD",
+          )):
+              raise SystemExit(
+                  "ERRO: a fonte mudou e os marcadores de mutex robusto nao foram encontrados."
+              )
+          print(
+              "Guards Linux normalizados para excluir Android; "
+              "sem contagem fragil de blocos."
+          )
           threading.write_text(text, encoding="utf-8")
 
-          header.parent.mkdir(parents=True, exist_ok=True)
-          header.write_text(
-              "#pragma once\n"
-              "#if REX_PLATFORM_ANDROID\n"
-              "#include <android/api-level.h>\n"
-              "namespace rex {\n"
-              "inline int GetAndroidApiLevel() { return android_get_device_api_level(); }\n"
-              "}  // namespace rex\n"
-              "#endif  // REX_PLATFORM_ANDROID\n",
-              encoding="utf-8",
+          # O patch Android fixado ja fornece main_android.h com as declaracoes
+          # de GetAndroidNativeLibraryDir, SetAndroidApplicationContext e
+          # GetAndroidApiLevel. Nao sobrescreva esse header: filesystem_posix.cpp
+          # depende de GetAndroidNativeLibraryDir durante a compilacao.
+          if not header.is_file():
+              raise SystemExit("ERRO: main_android.h do patch Android esta ausente.")
+          header_text = header.read_text(encoding="utf-8")
+          required_android_api = (
+              "GetAndroidNativeLibraryDir",
+              "SetAndroidApplicationContext",
+              "GetAndroidApiLevel",
           )
+          missing_api = [name for name in required_android_api if name not in header_text]
+          if missing_api:
+              raise SystemExit(
+                  "ERRO: main_android.h perdeu declaracoes do patch Android: "
+                  + ", ".join(missing_api)
+              )
 
           if new_assert not in threading.read_text(encoding="utf-8"):
               raise SystemExit("ERRO: threading_posix.cpp nao habilitou a compilacao Android.")
-          if "GetAndroidApiLevel" not in header.read_text(encoding="utf-8"):
-              raise SystemExit("ERRO: cabecalho de compatibilidade Android nao foi criado.")
-          print("APIs Android corrigidas em memory_posix.cpp e threading_posix.cpp.")
-          print(f"Cabecalho temporario criado: {header}")
+          print("APIs Android corrigidas; declaracoes originais do patch preservadas.")
+          print(f"Cabecalho Android validado: {header}")
           PYTHON
 
       - name: Verificar SDL3
@@ -781,13 +874,23 @@ jobs:
           fi
 
           grep -q 'SDL_main(int argc, char\* argv\[\])' "$RUNTIME_ENTRY"
+          grep -q 'SetAndroidApplicationContext' "$RUNTIME_ENTRY"
+          grep -q 'InitializeAndroidSystemForApplicationContext' "$RUNTIME_ENTRY"
+          grep -q 'ShutdownAndroidSystem' "$RUNTIME_ENTRY"
           grep -q 'memory::AndroidInitialize' "$RUNTIME_ENTRY"
           grep -q 'thread::AndroidInitialize' "$RUNTIME_ENTRY"
           grep -q 'filesystem::AndroidInitialize' "$RUNTIME_ENTRY"
           grep -q 'WindowedApp::GetCreator("blackops1")' "$RUNTIME_ENTRY"
+          grep -q 'openContentFd(String uriText, String mode)' android/app/src/main/java/com/blackops1/recomp/GameActivity.java
+          grep -q 'openContentFd' rexglue-sdk/src/core/android_runtime.cpp
+          grep -q 'DEBUG_POSTFIX ""' "$APP_CMAKE"
+          grep -q 'add_custom_target(blackops1_stage_gpu_plugin' "$APP_CMAKE"
+          grep -q 'REX_PLATFORM_ANDROID=1' "$APP_CMAKE"
+          grep -q 'XE_UI_WINDOWED_APPS_IN_LIBRARY=1' "$APP_CMAKE"
 
           echo "OK: SDLActivity Java e SDL nativo vem do mesmo checkout."
-          echo "OK: SDL_main inicializa os subsistemas Android/ReXGlue e seleciona blackops1."
+          echo "OK: ABI Android consistente e plugin Xenos staged em jniLibs."
+          echo "OK: SDL_main fornece o contexto JNI, inicializa o sistema Android e seleciona blackops1."
 
       - name: Compilar APK ARM64
         shell: bash
@@ -815,8 +918,7 @@ jobs:
 
           if [ ! -f "$APK" ]; then
             echo "::error::APK nao encontrado em $APK"
-            find android/app/build/outputs \
-              -type f -print 2>/dev/null || true
+            find android/app/build/outputs -type f -print 2>/dev/null || true
             exit 1
           fi
 
@@ -824,30 +926,74 @@ jobs:
           file "$APK"
 
           echo "Verificando bibliotecas nativas dentro do APK..."
-          unzip -l "$APK" | grep -E 'lib/arm64-v8a/.*\.so$' || true
+          unzip -l "$APK" | grep -E 'lib/arm64-v8a/.*[.]so$' || true
 
-          if ! unzip -l "$APK" | grep -qE 'lib/arm64-v8a/libSDL3\.so$'; then
+          if ! unzip -l "$APK" | grep -qE 'lib/arm64-v8a/libSDL3[.]so$'; then
             echo "::error::libSDL3.so ausente do APK ARM64. SDLActivity nao pode iniciar."
             exit 1
           fi
 
-          if ! unzip -l "$APK" | grep -qE 'lib/arm64-v8a/libblackops1_android\.so$'; then
+          if ! unzip -l "$APK" | grep -qE 'lib/arm64-v8a/libblackops1_android[.]so$'; then
             echo "::error::libblackops1_android.so ausente do APK ARM64."
             exit 1
           fi
 
-          if unzip -l "$APK" | grep -qE 'lib/arm64-v8a/libSDL3d\.so$'; then
-            echo "::error::libSDL3d.so ainda foi empacotada; a exclusao Gradle nao funcionou."
+          if unzip -l "$APK" | grep -qE 'lib/arm64-v8a/libSDL3d[.]so$'; then
+            echo "::error::libSDL3d.so ainda foi empacotada; SDLActivity precisa de libSDL3.so com SONAME correspondente."
             exit 1
           fi
 
-          SDL_COUNT=$(unzip -l "$APK" | grep -cE 'lib/arm64-v8a/libSDL3\.so$' || true)
+          SDL_COUNT=$(unzip -l "$APK" | grep -cE 'lib/arm64-v8a/libSDL3[.]so$' || true)
           if [ "$SDL_COUNT" -ne 1 ]; then
             echo "::error::Esperava exatamente uma libSDL3.so no APK; encontrei $SDL_COUNT."
             exit 1
           fi
 
-          echo "OK: uma libSDL3.so e libblackops1_android.so estao no APK; libSDL3d.so ausente."
+          # OnInitialize carrega o plugin pelo nome que o SDK deriva da
+          # configuracao CMake. assembleDebug precisa levar o postfix 'd'.
+          for library in librexruntimed.so librexgpu-xenosd.so libc++_shared.so; do
+            if ! unzip -l "$APK" | grep -qE "lib/arm64-v8a/${library}$"; then
+              echo "::error::Biblioteca obrigatoria ausente do APK ARM64: ${library}"
+              exit 1
+            fi
+          done
+
+          mkdir -p android-diagnostic
+          unzip -p "$APK" lib/arm64-v8a/libblackops1_android.so > android-diagnostic/libblackops1_android.so
+          readelf -d android-diagnostic/libblackops1_android.so > android-diagnostic/native-needed.txt
+          cat android-diagnostic/native-needed.txt
+          grep -q 'libSDL3[.]so' android-diagnostic/native-needed.txt || {
+            echo "::error::libblackops1_android.so nao declara a dependencia libSDL3.so que SDLActivity carrega."
+            exit 1
+          }
+          grep -q 'librexruntimed[.]so' android-diagnostic/native-needed.txt || {
+            echo "::error::libblackops1_android.so nao declara a dependencia do runtime ReXGlue Debug."
+            exit 1
+          }
+          if grep -q 'libSDL3d[.]so' android-diagnostic/native-needed.txt; then
+            echo "::error::libblackops1_android.so ainda pede libSDL3d.so, que nao e carregada pelo SDLActivity."
+            exit 1
+          fi
+
+          unzip -p "$APK" lib/arm64-v8a/librexruntimed.so > android-diagnostic/librexruntimed.so
+          readelf -d android-diagnostic/librexruntimed.so > android-diagnostic/runtime-needed.txt
+          grep -q 'libSDL3[.]so' android-diagnostic/runtime-needed.txt || {
+            echo "::error::librexruntimed.so nao declara a dependencia libSDL3.so."
+            exit 1
+          }
+          if grep -q 'libSDL3d[.]so' android-diagnostic/runtime-needed.txt; then
+            echo "::error::librexruntimed.so ainda pede libSDL3d.so."
+            exit 1
+          fi
+
+          unzip -p "$APK" lib/arm64-v8a/librexgpu-xenosd.so > android-diagnostic/librexgpu-xenosd.so
+          readelf -d android-diagnostic/librexgpu-xenosd.so > android-diagnostic/plugin-needed.txt
+          grep -q 'librexruntimed[.]so' android-diagnostic/plugin-needed.txt || {
+            echo "::error::O plugin Xenos nao foi ligado ao mesmo runtime ReXGlue."
+            exit 1
+          }
+
+          echo "OK: SDL3 tem SONAME consistente; runtime, STL e plugin Xenos Debug estao empacotados."
 
       - name: Auditar alinhamento ELF para paginas Android de 16 KiB
         shell: bash

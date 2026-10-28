@@ -4,6 +4,7 @@
 #include <vulkan/vulkan.h>
 
 #include <android/log.h>
+#include <dlfcn.h>
 #include <jni.h>
 
 #include <cstdlib>
@@ -16,7 +17,9 @@
 #include <rex/cvar.h>
 #include <rex/filesystem.h>
 #include <rex/logging.h>
+#include <rex/main_android.h>
 #include <rex/memory.h>
+#include <rex/system.h>
 #include <rex/thread.h>
 #include <rex/ui/windowed_app.h>
 #include <rex/ui/windowed_app_context_sdl.h>
@@ -29,6 +32,19 @@
 
 namespace {
 
+std::string AndroidNativeLibraryDirectory() {
+  Dl_info info{};
+  if (dladdr(reinterpret_cast<void*>(&AndroidNativeLibraryDirectory), &info) &&
+      info.dli_fname) {
+    const std::string library_path(info.dli_fname);
+    const size_t separator = library_path.find_last_of('/');
+    if (separator != std::string::npos) {
+      return library_path.substr(0, separator);
+    }
+  }
+  return {};
+}
+
 bool InitializeAndroidReXGlue() {
   auto* env = static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
   auto activity = static_cast<jobject>(SDL_GetAndroidActivity());
@@ -37,32 +53,46 @@ bool InitializeAndroidReXGlue() {
     return false;
   }
 
-  // Obter o JavaVM antes de liberar a referencia local da Activity.
-  // SDL_GetAndroidActivity() fornece a referencia que esta funcao deve soltar
-  // exatamente uma vez; usar DeleteLocalRef antes e depois de GetJavaVM seria
-  // uma liberacao dupla de uma referencia JNI invalida.
   JavaVM* java_vm = nullptr;
   if (env->GetJavaVM(&java_vm) != JNI_OK || !java_vm) {
     env->DeleteLocalRef(activity);
     BO1_LOGE("JNIEnv::GetJavaVM falhou; ReXGlue nao sera inicializado.");
     return false;
   }
+
+  const std::string native_library_directory = AndroidNativeLibraryDirectory();
+  if (native_library_directory.empty()) {
+    env->DeleteLocalRef(activity);
+    BO1_LOGE("Nao foi possivel localizar o diretorio das bibliotecas nativas.");
+    return false;
+  }
+
+  // O SDK cria uma referencia global da Activity; a referencia local do SDL
+  // e liberada exatamente uma vez depois de entregar o contexto.
+  rex::SetAndroidApplicationContext(
+      java_vm, activity, native_library_directory.c_str());
   env->DeleteLocalRef(activity);
 
-  // Este checkout atual nao expoe o contexto Android do fork NFSMW; a
-  // integracao equivalente precisa ser adicionada ao SDK e aplicada pelo
-  // workflow, nao simulada chamando APIs que nao existem.
-
+  // O SDK nao inicializa automaticamente estes subsistemas em Android.
   rex::memory::AndroidInitialize();
   rex::thread::AndroidInitialize();
   rex::filesystem::AndroidInitialize();
 
-  BO1LogStage("[BO1-ANDROID] SDL JNI context valido; JavaVM=%p", static_cast<void*>(java_vm));
+  if (!rex::InitializeAndroidSystemForApplicationContext()) {
+    BO1_LOGE("InitializeAndroidSystemForApplicationContext retornou false.");
+    rex::filesystem::AndroidShutdown();
+    rex::thread::AndroidShutdown();
+    rex::memory::AndroidShutdown();
+    rex::ShutdownAndroidSystem();
+    return false;
+  }
+
+  BO1LogStage("[BO1-ANDROID] Contexto Android ReXGlue inicializado; libs=%s",
+              native_library_directory.c_str());
   BO1LogStage("[BO1-ANDROID] memory/thread/filesystem AndroidInitialize concluido");
-  BO1_LOGI("Subsistemas Android do ReXGlue inicializados.");
+  BO1_LOGI("Contexto Android e subsistemas do ReXGlue inicializados.");
   return true;
 }
-
 void LogVulkanDiagnostics() {
   BO1LogStage("[BO1-VULKAN] Preflight started; diagnostic only, it will not block game startup.");
 
@@ -148,6 +178,7 @@ void ShutdownAndroidReXGlue() {
   rex::filesystem::AndroidShutdown();
   rex::thread::AndroidShutdown();
   rex::memory::AndroidShutdown();
+  rex::ShutdownAndroidSystem();
 }
 
 }  // namespace
