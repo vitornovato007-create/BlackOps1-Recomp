@@ -22,6 +22,7 @@ STEPS = [
     ("patch Android fixado do SDK", [sys.executable, "tools/android/apply_android_sdk_patch.py"]),
     ("diretorio de logs Android", [sys.executable, "tools/android/apply_logging_patch.py"]),
     ("instrumentacao de runtime e plugin GPU", [sys.executable, "tools/android/apply_runtime_diagnostics.py"]),
+    ("resolver plugin GPU pelo nativeLibraryDir Android", [sys.executable, "tools/android/apply_gpu_plugin_native_dir.py"]),
     ("backend de fibers ARM64", [sys.executable, "tools/android/apply_fiber_backend.py"]),
     ("backend de janela/surface", [sys.executable, "tools/android/apply_ui_backend.py"]),
     ("TimerQueue compatível com Android", ["bash", "tools/android/steps/apply_timer_queue.sh"]),
