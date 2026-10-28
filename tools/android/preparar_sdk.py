@@ -21,6 +21,7 @@ SDK = ROOT / "rexglue-sdk"
 STEPS = [
     ("patch Android fixado do SDK", [sys.executable, "tools/android/apply_android_sdk_patch.py"]),
     ("diretorio de logs Android", [sys.executable, "tools/android/apply_logging_patch.py"]),
+    ("instrumentacao de runtime e plugin GPU", [sys.executable, "tools/android/apply_runtime_diagnostics.py"]),
     ("backend de fibers ARM64", [sys.executable, "tools/android/apply_fiber_backend.py"]),
     ("backend de janela/surface", [sys.executable, "tools/android/apply_ui_backend.py"]),
     ("TimerQueue compatível com Android", ["bash", "tools/android/steps/apply_timer_queue.sh"]),
@@ -42,6 +43,7 @@ def main() -> int:
     required = [ROOT / relative for relative in (
         "tools/android/apply_android_sdk_patch.py",
         "tools/android/apply_logging_patch.py",
+        "tools/android/apply_runtime_diagnostics.py",
         "tools/android/apply_fiber_backend.py",
         "tools/android/apply_ui_backend.py",
         "tools/android/steps/apply_timer_queue.sh",
